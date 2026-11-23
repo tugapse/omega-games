@@ -2,7 +2,7 @@
 // its animations, built in code and played by the engine's Animator. No
 // rendering here, so it runs in tests; look.ts gives it its meshes.
 import { quat, vec3 } from 'gl-matrix';
-import { AnimationChannel, AnimationClip, Animator, SceneEntity } from '../../../src';
+import { AnimationChannel, AnimationClip, Animator, SceneEntity } from 'omega-game-engine';
 
 /** A joint: its parent, where it sits on the parent at rest, and what hangs from it. */
 export interface Bone {

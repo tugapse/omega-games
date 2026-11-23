@@ -1,0 +1,24 @@
+{
+  "name": "omega-games",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Small games made with the Omega game engine.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "check": "tsc -p bowling && tsc -p golf && tsc -p platformer && tsc -p drift",
+    "build": "node scripts/build-games.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "gl-matrix": "^3.4.4",
+    "tslib": "^2.8.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.7"
+  }
+}

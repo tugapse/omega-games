@@ -1,6 +1,6 @@
 // Sounds, synthesised with Web Audio (no sound files): the ball rolling, pins
 // clacking, the ball's thud, the pinsetter, and a chime for strikes and spares.
-import { AudioEngine } from '../../../src';
+import { AudioEngine } from 'omega-game-engine';
 
 /** Loudness 0..1 from a contact force in newtons (Rapier, per step), on a log scale. */
 export function forceToGain(force: number, threshold = 20): number {

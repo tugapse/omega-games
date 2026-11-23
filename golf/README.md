@@ -4,7 +4,7 @@ A casual golf minigame made with the engine, inspired by the swing-and-wind
 golf of motion-control consoles but with its own course, look and characters.
 Plan and decisions: the "Omega Golf: plano" doc. The ball has its own physics
 (no Rapier), so the game stays small and its tests run in Node.
-`npm run build:games` bundles it into `docs/games/golf/` (GitHub Pages, from `develop`).
+`npm run build -- golf` bundles it into `docs/golf/` (GitHub Pages, from `develop`).
 
 Phases done: 1 (ball, clubs, swing), 2 (the course: nine holes with bunkers,
 water and trees, and wind), 3 (the green: slope dashes, the lip, the map view,
@@ -29,7 +29,7 @@ the fly-in over each hole), 4 (the golfer, animated, and the optional motion swi
 
 ```sh
 npm test
-npm run check:games
-npm run build:games golf
-cd docs/games/golf && python3 -m http.server 8778
+npm run check
+npm run build -- golf
+cd docs/golf && python3 -m http.server 8778
 ```

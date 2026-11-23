@@ -1,7 +1,7 @@
 // The swing gesture: drag down to take the club back (the power bar fills),
 // then flick up to hit (it goes off as the finger turns up). A slanted flick curves the ball. A sideways drag before
 // that turns the aim. Keyboard: hold space for power, Q/E for curve.
-import { Pointer, PointerState } from '../../../src';
+import { Pointer, PointerState } from 'omega-game-engine';
 
 export const SWING = {
   /** A backswing this long (share of the screen height) is full power. */

@@ -4,7 +4,7 @@ import { vec2, vec3 } from 'gl-matrix';
 import {
   Color, CubePrimitive, DirectionalLight, LathePrimitive, Light, LitMaterial, LitShader, Mesh, MeshData, MeshRendererBehaviour,
   Resources, Scene, SceneEntity, SpherePrimitive, Texture,
-} from '../../../src';
+} from 'omega-game-engine';
 import { BALL, Tree } from './ball';
 import { Hole, WaterShape } from './course';
 import { HeightField, Surface } from './terrain';

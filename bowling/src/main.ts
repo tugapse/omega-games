@@ -4,7 +4,7 @@ import { vec2, vec3 } from 'gl-matrix';
 import {
   Camera, CanvasViewport, Color, Pointer, DefaultResourceLoader, DependencyManager, Engine, PhysicsWorld, RapierBackend,
   RenderPipelineSettings, Resources, Scene, ToneMapping,
-} from '../../../src';
+} from 'omega-game-engine';
 import { bindSwipe, swipeTurn, THROW } from './controls';
 import { GyroThrow } from './gyro';
 import { Match, MAX_PLAYERS } from './match';
@@ -108,8 +108,8 @@ let sweep = {
   /** Set only these pins (the spare challenge), or all ten when null. */
   rack: null as number[] | null,
 };
-let sweepBar: import('../../../src').SceneEntity;
-let aimGuide: import('../../../src').SceneEntity;
+let sweepBar: import('omega-game-engine').SceneEntity;
+let aimGuide: import('omega-game-engine').SceneEntity;
 /** Aim, radians from straight down the lane (positive = right); a swipe's own angle adds to it. */
 let aimAngle = 0;
 const MAX_AIM = 0.07;
@@ -668,7 +668,7 @@ function updateRollSound(): void {
 
 /** Contact sounds: each pair of objects sounds once when it starts touching hard (forces repeat every step). */
 const lastContact = new Map<string, number>();
-function onContactForce(a: import('../../../src').SceneEntity, b: import('../../../src').SceneEntity, force: number): void {
+function onContactForce(a: import('omega-game-engine').SceneEntity, b: import('omega-game-engine').SceneEntity, force: number): void {
   const now = performance.now() / 1000;
   const key = a.name < b.name ? `${a.name}|${b.name}` : `${b.name}|${a.name}`;
   const lastTime = lastContact.get(key) ?? -1;

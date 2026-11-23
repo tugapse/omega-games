@@ -5,7 +5,7 @@
 import {
   Camera, CanvasViewport, DefaultResourceLoader, DependencyManager, Engine, RenderPipelineSettings, Resources, Scene,
   ToneMapping,
-} from '../../../src';
+} from 'omega-game-engine';
 import { vec3 } from 'gl-matrix';
 import { Car, CarInput, driftAngle, forwardSpeed, makeCar, NO_INPUT, speedOf, STEP, stepCar } from './car';
 import { CHASE, ChaseState, followCar, makeChase } from './camera';

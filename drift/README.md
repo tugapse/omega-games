@@ -6,7 +6,7 @@ where sliding well is what counts. Inspired by the mechanics of the genre
 tracks, look, sounds and music, all made in code. Plan and decisions: the
 "Omega Drift: plano" doc. The car has its own physics on a plane (no Rapier),
 so the game stays small and its tests run in Node.
-`npm run build:games -- drift` bundles it into `docs/games/drift/`.
+`npm run build -- drift` bundles it into `docs/drift/`.
 
 All six phases are done: the car and its drift, the race and the time trial
 with a ghost, drift points and the turbo, rivals and the six tracks in three

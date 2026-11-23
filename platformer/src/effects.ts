@@ -2,7 +2,7 @@
 // lands, sparkles from coins, stars from stomps, a burst when a boss is hit).
 // A few entities per colour, reused (the engine has no instancing), each
 // shrinking away over its life.
-import { CubePrimitive, LitMaterial, Scene, SceneEntity, SpherePrimitive } from '../../../src';
+import { CubePrimitive, LitMaterial, Scene, SceneEntity, SpherePrimitive } from 'omega-game-engine';
 import { canvasTexture, makeEntity, material, render } from './look';
 
 type Gl = WebGL2RenderingContext;

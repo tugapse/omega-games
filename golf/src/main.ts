@@ -4,7 +4,7 @@ import { mat4, vec3, vec4 } from 'gl-matrix';
 import {
   Camera, CanvasViewport, Color, DefaultResourceLoader, DependencyManager, Engine, Pointer, RenderPipelineSettings,
   Resources, Scene, ToneMapping,
-} from '../../../src';
+} from 'omega-game-engine';
 import { BALL, BallState, Course, hit, restingBall, Shot, simulate, stepBall } from './ball';
 import { club, ClubId, CLUBS, lieFactor, MAX_PUTT, shotFor, suggestClub } from './clubs';
 import { buildHole, dropPoint, Hole } from './course';

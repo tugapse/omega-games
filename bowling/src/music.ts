@@ -1,6 +1,6 @@
 // Background music: soft lounge bossa ("elevator music"), synthesised and
 // sequenced in code with the engine's SequencerClock. No audio files.
-import { AudioEngine, SequencerClock } from '../../../src';
+import { AudioEngine, SequencerClock } from 'omega-game-engine';
 
 export const MUSIC = {
   bpm: 92,

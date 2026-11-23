@@ -1,5 +1,5 @@
 // The throw gesture: drag sideways to move the ball, swipe up to bowl, curve the swipe for spin.
-import { Pointer, PointerState } from '../../../src';
+import { Pointer, PointerState } from 'omega-game-engine';
 import { ThrowParams } from './lane';
 
 export const THROW = {

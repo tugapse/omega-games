@@ -3,7 +3,7 @@
 import {
   Camera, CanvasViewport, DefaultResourceLoader, DependencyManager, Engine, RenderPipelineSettings, Resources, Scene,
   ToneMapping,
-} from '../../../src';
+} from 'omega-game-engine';
 import { vec3 } from 'gl-matrix';
 import { Bot, botInput, makeBot } from './bot';
 import { CameraState, followHero, makeCamera, VIEW } from './camera';

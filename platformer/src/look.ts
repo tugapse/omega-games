@@ -5,7 +5,7 @@ import { vec2, vec3 } from 'gl-matrix';
 import {
   Color, CubePrimitive, DirectionalLight, Light, LitMaterial, LitShader, Mesh, MeshData, MeshRendererBehaviour,
   Resources, Scene, SceneEntity, SpherePrimitive, Texture,
-} from '../../../src';
+} from 'omega-game-engine';
 import { BitClip, buildBit, LOOPING } from './bit';
 import { Level, Theme, Tile, tileAt } from './level';
 import { THEMES } from './themes';

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => {
   (globalThis as any).WebGL2RenderingContext ??= new Proxy({}, { get: () => 0 });
 });
-import { SceneEntity } from '../../../src';
+import { SceneEntity } from 'omega-game-engine';
 import { ReplayRecorder } from './replay';
 import { forceToGain } from './sound';
 

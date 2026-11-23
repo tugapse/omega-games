@@ -2,7 +2,7 @@
 // joint) holding a club, with an address pose, a full swing and a putt keyed in
 // code and played by the engine's Animator. No rendering here; look.ts dresses it.
 import { quat, vec3 } from 'gl-matrix';
-import { AnimationChannel, AnimationClip, Animator, SceneEntity } from '../../../src';
+import { AnimationChannel, AnimationClip, Animator, SceneEntity } from 'omega-game-engine';
 
 /** A joint: its parent, where it sits on the parent at rest, and what hangs from it. */
 export interface Bone {

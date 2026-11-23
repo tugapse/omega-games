@@ -7,7 +7,7 @@
 // a negative one) and the body leans forward with a positive one; about z, the
 // right arm (on +x) lifts outwards with a positive angle, the left with a negative.
 import { quat } from 'gl-matrix';
-import { AnimationChannel, AnimationClip, Animator, SceneEntity } from '../../../src';
+import { AnimationChannel, AnimationClip, Animator, SceneEntity } from 'omega-game-engine';
 
 export interface Bone {
   name: string;

@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => {
   (globalThis as any).WebGL2RenderingContext ??= new Proxy({}, { get: () => 0 });
 });
-import { PhysicsBackend, PhysicsWorld, RapierBackend } from '../../../src';
+import { PhysicsBackend, PhysicsWorld, RapierBackend } from 'omega-game-engine';
 import { buildLane, pinsDown, resetBall, throwBall } from './lane';
 import { MAX_LEVEL } from './arcade';
 import { hasStraightPath, levelLayout, straightPath, ObstacleField, ObstacleKind, ObstacleSpec, POOL } from './obstacles';

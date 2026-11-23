@@ -3,7 +3,7 @@
 import { quat, vec3 } from 'gl-matrix';
 import {
   ColliderBehaviour, ColliderShape, PhysicsWorld, RigidBodyBehaviour, RigidBodyType, SceneEntity,
-} from '../../../src';
+} from 'omega-game-engine';
 
 export const LANE = {
   halfWidth: 1.0541 / 2,

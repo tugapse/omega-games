@@ -3,7 +3,7 @@ import { vec2, vec3 } from 'gl-matrix';
 import {
   Color, CubePrimitive, DirectionalLight, LathePrimitive, Light, LitMaterial, LitShader, Mesh, MeshData,
   MeshRendererBehaviour, Resources, Scene, SceneEntity, SpherePrimitive, SpotLight, Texture,
-} from '../../../src';
+} from 'omega-game-engine';
 import { BALL, LANE, LaneEntities, PIN, PIN_SPOTS } from './lane';
 import { BowlerRig, rigEntities } from './bowler';
 import { OBSTACLE, ObstacleField } from './obstacles';

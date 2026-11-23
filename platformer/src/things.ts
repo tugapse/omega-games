@@ -3,7 +3,7 @@
 // block), the enemies (our own: Bolota, a round slime; Casco, a beetle that
 // hides in its shell; Zumbido, a buzzing drone), the checkpoint posts, the
 // power-ups (a battery, a thruster and a star), sparks and broken bricks.
-import { CubePrimitive, LitMaterial, MeshData, Scene, SceneEntity, SpherePrimitive } from '../../../src';
+import { CubePrimitive, LitMaterial, MeshData, Scene, SceneEntity, SpherePrimitive } from 'omega-game-engine';
 import { vec2, vec3 } from 'gl-matrix';
 import { blockMaterials, canvasTexture, makeEntity, material, render } from './look';
 import { Enemy, ItemKind, World } from './world';
@@ -426,7 +426,7 @@ export async function dressThings(gl: Gl, scene: Scene, w: World): Promise<Thing
 
 /** The boss: Rei Bolota (a crowned slime), Geodo (a rock golem with crystals on its back) or Turbina (a flying drone). */
 async function bossLook(
-  gl: Gl, scene: Scene, b: Boss, cube: MeshData, ball: MeshData, glow: (css: string) => Promise<import('../../../src').Texture>,
+  gl: Gl, scene: Scene, b: Boss, cube: MeshData, ball: MeshData, glow: (css: string) => Promise<import('omega-game-engine').Texture>,
 ) {
   const g = group(scene, `Boss ${b.kind}`);
   const body = makeEntity(scene, 'Boss body', g.root);

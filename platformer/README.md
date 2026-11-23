@@ -6,7 +6,7 @@ genre (variable jump height, blocks overhead, stomping enemies, power-ups) with
 its own hero, worlds and look. Plan and decisions: the "Omega Plataformas: plano" doc.
 3D drawn from the side; the hero has its own physics on a tile grid (no Rapier),
 so the game stays small and its tests run in Node.
-`npm run build:games -- platformer` bundles it into `docs/games/platformer/`.
+`npm run build -- platformer` bundles it into `docs/platformer/`.
 
 Phases done: 1 (the core: tile physics, the jump, the camera, a test level, keyboard and touch), 2 (a living world: coins, bonus blocks and bricks, three enemies, spikes, lives, a checkpoint and the clock), 3 (power-ups, Bit on a skeleton with animations, the flag scored by height), 4 (three worlds of three levels, moving and falling platforms, three hidden big coins per level, the world map), 5 (a boss at the end of each world, saved progress that opens the levels in turn, the title, pause and end screens), 6 (sound effects and a tune per world, particles, camera shake, gamepad, tuning for phones).
 

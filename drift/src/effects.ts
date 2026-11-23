@@ -6,7 +6,7 @@
 // overwrites the oldest straight in the vertex buffer on the GPU (the engine
 // has no dynamic meshes), so they cost one draw however many there are.
 import { vec2, vec3 } from 'gl-matrix';
-import { LitMaterial, MeshData, MeshRendererBehaviour, Scene, SceneEntity, SpherePrimitive } from '../../../src';
+import { LitMaterial, MeshData, MeshRendererBehaviour, Scene, SceneEntity, SpherePrimitive } from 'omega-game-engine';
 import { Car } from './car';
 import { canvasTexture, makeEntity, material, render } from './look';
 import { Track } from './track';

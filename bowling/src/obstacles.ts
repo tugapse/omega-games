@@ -4,7 +4,7 @@
 // changing lanes never creates or destroys anything. No rendering here (look.ts
 // dresses the pool), so it runs in tests.
 import { quat, vec3 } from 'gl-matrix';
-import { ColliderBehaviour, ColliderShape, PhysicsWorld, RigidBodyBehaviour, RigidBodyType, SceneEntity } from '../../../src';
+import { ColliderBehaviour, ColliderShape, PhysicsWorld, RigidBodyBehaviour, RigidBodyType, SceneEntity } from 'omega-game-engine';
 import { BALL, LANE, LaneEntities } from './lane';
 
 export type ObstacleSpec =

@@ -6,7 +6,7 @@ import { vec2, vec3 } from 'gl-matrix';
 import {
   Color, CubePrimitive, RenderLayer, DirectionalLight, LathePrimitive, Light, LitMaterial, LitShader, Mesh, MeshData,
   MeshRendererBehaviour, Resources, Scene, SceneEntity, SpherePrimitive, Texture,
-} from '../../../src';
+} from 'omega-game-engine';
 import { Car } from './car';
 import { THEMES } from './themes';
 import { Track } from './track';

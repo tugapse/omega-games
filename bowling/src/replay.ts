@@ -1,6 +1,6 @@
 // Records the ball and pins every frame of a roll and plays them back (slow motion replays).
 import { quat, vec3 } from 'gl-matrix';
-import { SceneEntity } from '../../../src';
+import { SceneEntity } from 'omega-game-engine';
 
 /** One thing that happened during the roll, replayed at its time (a sound). */
 export interface ReplayEvent { time: number; kind: string; gain: number }

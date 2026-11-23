@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => {
   (globalThis as any).WebGL2RenderingContext ??= new Proxy({}, { get: () => 0 });
 });
-import { PhysicsBackend, PhysicsWorld, RapierBackend } from '../../../src';
+import { PhysicsBackend, PhysicsWorld, RapierBackend } from 'omega-game-engine';
 import { buildLane, isPinDown, LaneEntities, rackPins, removePin, resetBall, throwBall } from './lane';
 import { LEAVES } from './spares';
 
