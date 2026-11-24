@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Omega Terreno</title>
+  <style>
+    :root { color-scheme: dark; --fg: #f6f1ff; --panel: rgba(12, 9, 24, .78); --line: #3b3352; --cyan: #2de2ff; --gold: #ffd23f; }
+    html, body { margin: 0; height: 100%; background: #9cc4e4; color: var(--fg); font: 14px/1.4 system-ui, sans-serif; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    #stats { position: fixed; right: 8px; top: max(8px, env(safe-area-inset-top)); padding: 3px 8px; background: var(--panel); border-radius: 8px; font: 12px monospace; pointer-events: none; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    .bar { position: fixed; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; max-width: calc(100vw - 32px); overflow-x: auto; scrollbar-width: none; }
+    .bar::-webkit-scrollbar { display: none; }
+    #tools { bottom: max(10px, env(safe-area-inset-bottom)); }
+    #options { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); align-items: center; }
+    .bar button { flex: none; min-width: 52px; padding: 7px 10px; border: 1px solid transparent; border-radius: 10px; background: transparent; font-size: 12px; line-height: 1.15; }
+    .bar button .i { display: block; font-size: 18px; }
+    .bar button.on { border-color: var(--cyan); background: rgba(45, 226, 255, .15); }
+    .bar button:disabled { opacity: .35; }
+    .bar label { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; padding: 0 4px; }
+    .bar input[type=range] { width: 90px; accent-color: var(--cyan); }
+    .layer { width: 34px; height: 34px; min-width: 0 !important; padding: 0 !important; border-radius: 50% !important; background-size: cover !important; border: 2px solid transparent !important; }
+    .layer.on { border-color: var(--gold) !important; }
+    #top { position: fixed; left: 8px; top: max(8px, env(safe-area-inset-top)); display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100vw - 100px); }
+    #top button { padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+    #hint { position: fixed; left: 50%; top: max(52px, calc(env(safe-area-inset-top) + 44px)); transform: translateX(-50%); padding: 5px 12px; background: var(--panel); border-radius: 10px; font-size: 12px; pointer-events: none; transition: opacity .4s; text-align: center; max-width: calc(100vw - 32px); }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="stats"></div>
+  <div id="top">
+    <button id="undo">↶ Anular</button>
+    <button id="redo">↷ Refazer</button>
+    <button id="bake">Aplicar regras</button>
+    <button id="clear">Limpar pintura</button>
+    <button id="regen">Novo relevo</button>
+  </div>
+  <div id="hint">Arrasta para rodar a câmara · dois dedos para aproximar</div>
+  <div id="options" class="bar">
+    <span id="layers" style="display:flex;gap:6px"></span>
+    <label>Tamanho <input id="radius" type="range" min="2" max="60" value="14"></label>
+    <label>Força <input id="strength" type="range" min="5" max="100" value="50"></label>
+  </div>
+  <div id="tools" class="bar">
+    <button data-tool="view" class="on"><span class="i">✥</span>Ver</button>
+    <button data-tool="raise"><span class="i">▲</span>Subir</button>
+    <button data-tool="lower"><span class="i">▼</span>Baixar</button>
+    <button data-tool="smooth"><span class="i">≈</span>Alisar</button>
+    <button data-tool="flatten"><span class="i">▬</span>Aplanar</button>
+    <button data-tool="noise"><span class="i">⁂</span>Ruído</button>
+    <button data-tool="paint"><span class="i">✎</span>Pintar</button>
+    <button data-tool="erase"><span class="i">⌫</span>Apagar</button>
+  </div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
