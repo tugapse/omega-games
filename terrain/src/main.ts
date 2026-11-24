@@ -1,11 +1,13 @@
 // Omega Terreno: a demo of the engine's terrain. A 3 × 3 terrain of chunks,
 // painted by its height and slope rules; sculpt and paint it with a finger or
 // the mouse, undo, bake the rules into the painting, make a new relief.
+import RAPIER from '@dimforge/rapier3d-compat';
 import { mat4, vec3, vec4 } from 'gl-matrix';
 import {
-  BrushSettings, cachedGroundTexture, Camera, CanvasViewport, Color, DefaultResourceLoader, DependencyManager,
-  DirectionalLight, Engine, generateRelief, Light, RenderPipelineSettings, RenderQuality, Resources, Scene,
-  SceneEntity, SculptTool, TerrainBehaviour, ToneMapping,
+  BrushSettings, cachedGroundTexture, Camera, CanvasViewport, ColliderBehaviour, Color, DefaultResourceLoader,
+  DependencyManager, DirectionalLight, Engine, generateRelief, Light, LitMaterial, LitShader, Mesh,
+  MeshRendererBehaviour, PhysicsWorld, RapierBackend, RenderPipelineSettings, RenderQuality, Resources,
+  RigidBodyBehaviour, Scene, SceneEntity, SculptTool, SpherePrimitive, TerrainBehaviour, ToneMapping,
 } from 'omega-game-engine';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -66,7 +68,7 @@ function rayAt(px: number, py: number): { origin: vec3; dir: vec3 } {
   return { origin: vec3.clone(eye), dir: vec3.normalize(vec3.create(), vec3.sub(vec3.create(), to, eye)) };
 }
 
-let scene: Scene, engine: Engine, terrain: TerrainBehaviour;
+let scene: Scene, engine: Engine, terrain: TerrainBehaviour, world: PhysicsWorld;
 let seed = Number(params.get('seed') ?? 7);
 
 function makeRelief(): void {
@@ -79,7 +81,7 @@ async function start(): Promise<void> {
   scene.name = 'Terreno';
   scene.sceneFog.enabled = true;
   scene.sceneFog.fogType = 1;
-  scene.sceneFog.density = 0.0009;
+  scene.sceneFog.density = 0.00035;
   scene.sceneFog.color = new Color(SKY[0], SKY[1], SKY[2], 1);
   scene.setGlRenderingContext(gl);
 
@@ -114,6 +116,10 @@ async function start(): Promise<void> {
   entity.addBehaviour(terrain);
   scene.addEntity(entity);
 
+  world = new PhysicsWorld(await RapierBackend.load(RAPIER), { fixedTimeStep: 1 / 60, maxSubSteps: 4 });
+  scene.addBehaviour(world);
+  terrain.refreshColliders(true);
+
   engine = new Engine();
   engine.initialize(canvas);
   engine.loadScene(scene);
@@ -122,8 +128,44 @@ async function start(): Promise<void> {
   settings.applyQuality(quality);
   scene.isRunning = true;
   buildLayers();
-  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt };
+  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls };
   requestAnimationFrame(frame);
+}
+
+// ---- Balls: Rapier bodies rolling on the chunks' heightfields ----
+const balls: SceneEntity[] = [];
+const ballColors = [[1, 0.35, 0.2], [0.2, 0.75, 1], [1, 0.82, 0.2], [0.85, 0.35, 1], [0.4, 1, 0.45]];
+const ballMesh = new SpherePrimitive(0.5, 24, 16);
+
+function dropBalls(): void {
+  for (let k = 0; k < 5; k++) {
+    if (balls.length >= 30) scene.removeEntity(balls.shift()!);
+    const e = new SceneEntity('Ball');
+    const x = orbit.target[0] + (Math.random() - 0.5) * 30, z = orbit.target[2] + (Math.random() - 0.5) * 30;
+    const h = terrain.heightAt(x, z) ?? orbit.target[1];
+    e.transform.setLocalPosition(x, h + 25 + k * 4, z);
+    e.transform.setLocalScale(2, 2, 2);
+    const m = new LitMaterial();
+    const c = ballColors[k % ballColors.length];
+    m.color = new Color(c[0], c[1], c[2], 1);
+    m.specularStrength = 0.6;
+    m.roughness = 0.3;
+    const r = new MeshRendererBehaviour(gl);
+    r.mesh = new Mesh();
+    r.mesh.meshData = ballMesh;
+    r.shader = new LitShader(gl, m);
+    e.addBehaviour(r);
+    const body = new RigidBodyBehaviour();
+    body.ccd = true;
+    e.addBehaviour(body);
+    const col = new ColliderBehaviour({ type: 'sphere', radius: 0.5 });
+    col.restitution = 0.3;
+    col.friction = 0.6;
+    col.density = 2;
+    e.addBehaviour(col);
+    scene.addEntity(e);
+    balls.push(e);
+  }
 }
 
 // ---- Tools ----
@@ -176,6 +218,7 @@ $('redo').onclick = () => terrain.redo();
 $('bake').onclick = () => { terrain.bakeRules(); hint('As regras estão agora na pintura: retoca-as à mão'); };
 $('clear').onclick = () => { terrain.clearPainting(); hint('Sem pintura: só as regras'); };
 $('regen').onclick = () => { seed++; makeRelief(); terrain.clearPainting(); terrain.history.clear(); };
+$('balls').onclick = () => dropBalls();
 window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) terrain.redo(); else terrain.undo(); }
 });

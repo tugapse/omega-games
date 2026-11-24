@@ -13,7 +13,7 @@
     .bar { position: fixed; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; max-width: calc(100vw - 32px); overflow-x: auto; scrollbar-width: none; }
     .bar::-webkit-scrollbar { display: none; }
     #tools { bottom: max(10px, env(safe-area-inset-bottom)); }
-    #options { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); align-items: center; }
+    #options { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); align-items: center; flex-wrap: wrap; justify-content: center; }
     .bar button { flex: none; min-width: 52px; padding: 7px 10px; border: 1px solid transparent; border-radius: 10px; background: transparent; font-size: 12px; line-height: 1.15; }
     .bar button .i { display: block; font-size: 18px; }
     .bar button.on { border-color: var(--cyan); background: rgba(45, 226, 255, .15); }
@@ -24,7 +24,8 @@
     .layer.on { border-color: var(--gold) !important; }
     #top { position: fixed; left: 8px; top: max(8px, env(safe-area-inset-top)); display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100vw - 100px); }
     #top button { padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
-    #hint { position: fixed; left: 50%; top: max(52px, calc(env(safe-area-inset-top) + 44px)); transform: translateX(-50%); padding: 5px 12px; background: var(--panel); border-radius: 10px; font-size: 12px; pointer-events: none; transition: opacity .4s; text-align: center; max-width: calc(100vw - 32px); }
+    #hint { position: fixed; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 46px); transform: translateX(-50%); padding: 5px 12px; background: var(--panel); border-radius: 10px; font-size: 12px; pointer-events: none; transition: opacity .4s; text-align: center; max-width: calc(100vw - 32px); }
+    @media (max-width: 520px) { .bar input[type=range] { width: 70px; } #hint { top: calc(max(8px, env(safe-area-inset-top)) + 92px); } }
   </style>
 </head>
 <body>
@@ -36,6 +37,7 @@
     <button id="bake">Aplicar regras</button>
     <button id="clear">Limpar pintura</button>
     <button id="regen">Novo relevo</button>
+    <button id="balls">Largar bolas</button>
   </div>
   <div id="hint">Arrasta para rodar a câmara · dois dedos para aproximar</div>
   <div id="options" class="bar">
