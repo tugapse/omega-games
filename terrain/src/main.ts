@@ -11,6 +11,26 @@ import {
 } from 'omega-game-engine';
 
 const $ = (id: string) => document.getElementById(id)!;
+
+// ---- Diagnostics: errors on screen (phones have no console), with the GPU's name ----
+const problems: string[] = [];
+function report(text: string): void {
+  problems.push(text);
+  const el = document.getElementById('diag');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = problems.slice(-12).join('\n\n');
+}
+for (const level of ['error', 'warn'] as const) {
+  const orig = console[level].bind(console);
+  console[level] = (...args: unknown[]) => {
+    orig(...args);
+    const text = args.map((a) => (a instanceof Error ? a.message : typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })())).join(' ');
+    if (level === 'error' || /shader|webgl|program/i.test(text)) report(`[${level}] ${text.slice(0, 1200)}`);
+  };
+}
+window.addEventListener('error', (e) => report(`[erro] ${e.message}`));
+window.addEventListener('unhandledrejection', (e) => report(`[erro] ${String((e as PromiseRejectionEvent).reason)}`));
 const canvas = $('view') as HTMLCanvasElement;
 const params = new URLSearchParams(location.search);
 
@@ -130,6 +150,20 @@ async function start(): Promise<void> {
   buildLayers();
   (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls };
   requestAnimationFrame(frame);
+  setTimeout(checkTerrain, 4000);
+}
+
+/** After a few seconds: is every chunk's shader compiled and drawn? If not, say why on screen. */
+function checkTerrain(): void {
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const gpu = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  const renderers = terrain.grid.all().map((c) => terrain.rendererOf(c.cx, c.cz));
+  const ready = renderers.filter((r) => r?.shader?.initialized && r.shader.shaderProgram).length;
+  const glError = gl.getError();
+  const linked = renderers[0]?.shader?.shaderProgram ? gl.getProgramParameter(renderers[0].shader.shaderProgram, gl.LINK_STATUS) : false;
+  const line = `GPU: ${gpu}\nblocos: ${renderers.length}, shaders prontos: ${ready}, ligado: ${linked}, gl.getError: ${glError}`;
+  (window as any).terrainDemo.diagnostics = line;
+  if (ready < renderers.length || !linked || glError || params.has('debug')) report(line);
 }
 
 // ---- Balls: Rapier bodies rolling on the chunks' heightfields ----
