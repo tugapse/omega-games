@@ -8,13 +8,13 @@ Play them at https://tugapse.github.io/omega-games/.
 
 | Game | What it is |
 | --- | --- |
-| [bowling](bowling/) | Bowling with Rapier physics, swipe to throw, obstacle lanes, a CPU and replays. |
-| [golf](golf/) | Nine holes of Vale Omega with its own ball physics, a swing meter and CPU players. |
-| [platformer](platformer/) | Nine levels in three worlds with moving platforms, bosses and saved progress. |
-| [drift](drift/) | A drift racer of round toy cars: six tracks, cups, a ghost, drift points and turbo. |
-| [terrain](terrain/) | A demo of the engine's terrain: sculpt and paint a 3 × 3 terrain painted by height and slope rules, and roll balls down it. |
+| [bowling](src/bowling/) | Bowling with Rapier physics, swipe to throw, obstacle lanes, a CPU and replays. |
+| [golf](src/golf/) | Nine holes of Vale Omega with its own ball physics, a swing meter and CPU players. |
+| [platformer](src/platformer/) | Nine levels in three worlds with moving platforms, bosses and saved progress. |
+| [drift](src/drift/) | A drift racer of round toy cars: six tracks, cups, a ghost, drift points and turbo. |
+| [terrain](src/terrain/) | A demo of the engine's terrain: sculpt and paint a 3 × 3 terrain painted by height and slope rules, and roll balls down it. |
 
-Each folder has its own README with the controls and how the code is laid out.
+Each game lives in `src/<game>/` with its own README with the controls and how the code is laid out.
 
 ## Working on it
 

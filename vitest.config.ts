@@ -3,5 +3,5 @@ import { aliases } from './scripts/engine.mjs';
 
 export default defineConfig({
   resolve: { alias: aliases },
-  test: { include: ['*/src/**/*.test.ts'], environment: 'node' },
+  test: { include: ['src/*/src/**/*.test.ts'], environment: 'node' },
 });
