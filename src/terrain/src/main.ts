@@ -2,14 +2,18 @@
 // painted by its height and slope rules; sculpt and paint it with a finger or
 // the mouse, undo, bake the rules into the painting, make a new relief.
 import RAPIER from '@dimforge/rapier3d-compat';
-import { mat4, vec3, vec4 } from 'gl-matrix';
+import { mat4, vec2, vec3, vec4 } from 'gl-matrix';
 import {
   BrushSettings, cachedGroundTexture, Camera, CanvasViewport, ColliderBehaviour, Color, DefaultResourceLoader,
-  DependencyManager, DirectionalLight, Engine, generateRelief, Light, LitMaterial, LitShader, Mesh,
-  MeshRendererBehaviour, PhysicsWorld, RapierBackend, RenderPipelineSettings, RenderQuality, Resources,
-  RigidBodyBehaviour, Scene, SceneEntity, SculptTool, SpherePrimitive, TerrainBehaviour, ToneMapping,
+  DEFAULT_RELIEF, DependencyManager, DirectionalLight, Engine, generateRelief, Light, LitMaterial, LitShader, Mesh,
+  MeshData, MeshRendererBehaviour, Noise2D, PhysicsWorld, RapierBackend, relief, RenderLayer, RenderPipelineSettings,
+  RenderQuality, Resources, RigidBodyBehaviour, Scene, SceneEntity, SculptTool, SpherePrimitive, TerrainBehaviour,
+  ToneMapping, touchAround,
 } from 'omega-game-engine';
+import { erode, stamp, StampShape, terrace } from './brushes';
+import { fillChunk } from './grow';
 import { rampAt } from './ramp';
+import { fromBase64, packWorld, SavedWorld, toBase64, unpackWorld } from './save';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -35,7 +39,7 @@ window.addEventListener('unhandledrejection', (e) => report(`[erro] ${String((e 
 const canvas = $('view') as HTMLCanvasElement;
 const params = new URLSearchParams(location.search);
 
-const gl = canvas.getContext('webgl2', { antialias: true })!;
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false })!;
 new DependencyManager().registerDependencies();
 Resources.setLoader(new DefaultResourceLoader(async (uri) => uri));
 Resources.for(gl);
@@ -72,6 +76,7 @@ let glide: { x: number; z: number; yaw?: number; pitch?: number; distance?: numb
 const eye = vec3.create();
 const view = mat4.create();
 function placeCamera(): void {
+  if (walking) { placeWalker(); return; }
   const { yaw, pitch, distance, target } = orbit;
   vec3.set(eye,
     target[0] + Math.cos(pitch) * Math.sin(yaw) * distance,
@@ -178,7 +183,8 @@ function moveByKeys(dt: number): void {
   const turn = on('KeyQ') - on('KeyE');
   if (!f && !r && !turn) return;
   glide = null;
-  const s = Math.sin(orbit.yaw), c = Math.cos(orbit.yaw), speed = orbit.distance * 0.9 * dt;
+  const s = Math.sin(orbit.yaw), c = Math.cos(orbit.yaw);
+  const speed = (walking ? (running ? RUN : WALK) : orbit.distance * 0.9) * dt;
   orbit.target[0] += (-s * f + c * r) * speed;
   orbit.target[2] += (-c * f - s * r) * speed;
   orbit.yaw += turn * 1.4 * dt;
@@ -188,9 +194,17 @@ function moveByKeys(dt: number): void {
 let scene: Scene, engine: Engine, terrain: TerrainBehaviour, world: PhysicsWorld;
 let seed = Number(params.get('seed') ?? 7);
 
+const RELIEF = { scale: 360, amplitude: 120, octaves: 5, persistence: 0.42, ridges: 0.3, sharpness: 1.45, base: 8 };
+
 function makeRelief(): void {
-  generateRelief(terrain.grid, { seed, scale: 360, amplitude: 120, octaves: 5, persistence: 0.42, ridges: 0.3, sharpness: 1.45, base: 8 });
+  generateRelief(terrain.grid, { seed, ...RELIEF });
   terrain.history.clear();
+}
+
+/** The relief's height at a terrain-space point: what a new chunk starts from. */
+function reliefAt(): (x: number, z: number) => number {
+  const noise = new Noise2D(seed), o = { ...DEFAULT_RELIEF, ...RELIEF, seed };
+  return (x, z) => relief(noise, x, z, o);
 }
 
 async function start(): Promise<void> {
@@ -244,8 +258,12 @@ async function start(): Promise<void> {
   settings.toneMapping = ToneMapping.ACES;
   settings.applyQuality(quality);
   scene.isRunning = true;
+  makeWater();
   buildLayers();
-  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls, rampAt, brush };
+  buildStamps();
+  if (!params.has('seed')) await loadLocal();
+  saved = signature();
+  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls, rampAt, brush, setTool, setWalking, setWater, growAt, worldNow, loadWorld, water, get walking() { return walking; }, get waterEntity() { return waterEntity; } };
   requestAnimationFrame(frame);
   setTimeout(checkTerrain, 4000);
 }
@@ -260,7 +278,9 @@ function checkTerrain(): void {
   const linked = renderers[0]?.shader?.shaderProgram ? gl.getProgramParameter(renderers[0].shader.shaderProgram, gl.LINK_STATUS) : false;
   const line = `GPU: ${gpu}\nblocos: ${renderers.length}, shaders prontos: ${ready}, ligado: ${linked}, gl.getError: ${glError}`;
   (window as any).terrainDemo.diagnostics = line;
-  if (ready < renderers.length || !linked || glError || params.has('debug')) report(line);
+  // gl.getError alone does not open the panel: the engine's lit meshes (the
+  // balls, the water) leave an INVALID_OPERATION on some drivers, drift too.
+  if (ready < renderers.length || !linked || params.has('debug')) report(line);
 }
 
 // ---- Balls: Rapier bodies rolling on the chunks' heightfields ----
@@ -300,20 +320,42 @@ function dropBalls(): void {
 }
 
 // ---- Tools ----
-type Tool = 'view' | SculptTool | 'ramp' | 'paint' | 'erase';
+type Tool = 'view' | SculptTool | 'ramp' | 'terrace' | 'stamp' | 'erode' | 'grow' | 'paint' | 'erase';
 let tool: Tool = 'view';
 let layer = 0;
+let stampShape: StampShape = 'hill';
+/** The terrace brush's step (m). */
+let step = 6;
+/** The most chunks the terrain grows to. */
+const MAX_CHUNKS = 25;
+const STAMPS: { shape: StampShape; name: string }[] = [
+  { shape: 'hill', name: 'Monte' }, { shape: 'crater', name: 'Cratera' }, { shape: 'plateau', name: 'Planalto' }, { shape: 'volcano', name: 'Vulcão' },
+];
+const HINTS: Record<Tool, string> = {
+  view: 'Arrasta para rodar · Shift+arrastar ou dois dedos movem · toque duplo centra',
+  raise: 'Arrasta no terreno · dois dedos movem a câmara',
+  lower: 'Arrasta no terreno · dois dedos movem a câmara',
+  smooth: 'Arrasta no terreno · dois dedos movem a câmara',
+  flatten: 'Aplana à altura onde começas · dois dedos movem a câmara',
+  noise: 'Arrasta no terreno · dois dedos movem a câmara',
+  ramp: 'Arrasta de um ponto a outro: uma rampa reta entre as duas alturas · Tamanho é a largura',
+  terrace: 'Arrasta para fazer socalcos · Degrau é a altura de cada um',
+  stamp: 'Escolhe a forma e toca no terreno · Tamanho é a largura, Força a altura',
+  erode: 'Arrasta: a chuva escava ravinas e enche as covas',
+  grow: 'Toca num + para juntar um bloco ao terreno (não se anula)',
+  paint: 'Escolhe a camada e pinta · dois dedos movem a câmara',
+  erase: 'Arrasta para voltar às regras · dois dedos movem a câmara',
+};
 const brush: BrushSettings = { radius: 14, strength: 0.5, hardness: 0.35 };
 
 function setTool(t: Tool): void {
   tool = t;
   document.querySelectorAll<HTMLButtonElement>('#tools button').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
-  ($('layers') as HTMLElement).style.display = t === 'paint' ? 'flex' : 'none';
-  hint(t === 'view' ? 'Arrasta para rodar · Shift+arrastar ou dois dedos movem · toque duplo centra'
-    : t === 'paint' ? 'Escolhe a camada e pinta · dois dedos movem a câmara'
-    : t === 'ramp' ? 'Arrasta de um ponto a outro: uma rampa reta entre as duas alturas · Tamanho é a largura'
-    : 'Arrasta no terreno · dois dedos movem a câmara');
-  if (t === 'view') terrain?.showBrush(null);
+  $('layers').style.display = t === 'paint' ? 'flex' : 'none';
+  $('stamps').style.display = t === 'stamp' ? 'flex' : 'none';
+  $('stepBox').style.display = t === 'terrace' ? 'flex' : 'none';
+  hint(HINTS[t]);
+  if (t === 'view' || t === 'grow') terrain?.showBrush(null);
   cancelRamp();
 }
 
@@ -343,6 +385,18 @@ function buildLayers(): void {
   });
 }
 
+function buildStamps(): void {
+  const box = $('stamps');
+  box.innerHTML = '';
+  for (const { shape, name } of STAMPS) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.className = shape === stampShape ? 'on' : '';
+    b.onclick = () => { stampShape = shape; buildStamps(); };
+    box.appendChild(b);
+  }
+}
+
 document.querySelectorAll<HTMLButtonElement>('#tools button').forEach((b) => (b.onclick = () => setTool(b.dataset.tool as Tool)));
 $('radius').oninput = (e) => (brush.radius = Number((e.target as HTMLInputElement).value));
 $('strength').oninput = (e) => (brush.strength = Number((e.target as HTMLInputElement).value) / 100);
@@ -350,16 +404,34 @@ $('hardness').oninput = (e) => (brush.hardness = Number((e.target as HTMLInputEl
 $('home').onclick = () => (glide = { x: 0, z: 0, ...HOME });
 $('undo').onclick = () => terrain.undo();
 $('redo').onclick = () => terrain.redo();
-$('bake').onclick = () => { terrain.bakeRules(); hint('As regras estão agora na pintura: retoca-as à mão'); };
-$('clear').onclick = () => { terrain.clearPainting(); hint('Sem pintura: só as regras'); };
-$('regen').onclick = () => { seed++; makeRelief(); terrain.clearPainting(); terrain.history.clear(); };
+$('step').oninput = (e) => (step = Number((e.target as HTMLInputElement).value));
+$('bake').onclick = () => { terrain.bakeRules(); hint('As regras estão agora na pintura: retoca-as à mão'); closeMenu(); };
+$('clear').onclick = () => { terrain.clearPainting(); hint('Sem pintura: só as regras'); closeMenu(); };
+$('regen').onclick = () => { seed++; makeRelief(); terrain.clearPainting(); terrain.history.clear(); closeMenu(); };
 $('balls').onclick = () => dropBalls();
+$('more').onclick = () => $('menu').classList.toggle('open');
+$('walk').onclick = () => setWalking(!walking);
+$('water').onclick = () => setWater(!water.on, water.level);
+$('level').oninput = (e) => setWater(true, Number((e.target as HTMLInputElement).value));
+$('save').onclick = () => { void saveLocal(true); closeMenu(); };
+$('export').onclick = () => { void exportFile(); closeMenu(); };
+$('import').onclick = () => ($('file') as HTMLInputElement).click();
+$('file').onchange = (e) => {
+  const input = e.target as HTMLInputElement;
+  const f = input.files?.[0];
+  input.value = '';
+  closeMenu();
+  if (f) void importFile(f);
+};
+function closeMenu(): void { $('menu').classList.remove('open'); }
 window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) terrain.redo(); else terrain.undo(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || document.activeElement instanceof HTMLInputElement) return;
+  running = e.shiftKey;
   if (MOVE_KEYS.includes(e.code)) { e.preventDefault(); keys.add(e.code); }
+  if (e.code === 'Escape') { if (walking) setWalking(false); closeMenu(); }
 });
-window.addEventListener('keyup', (e) => keys.delete(e.code));
+window.addEventListener('keyup', (e) => { keys.delete(e.code); running = e.shiftKey; });
 window.addEventListener('blur', () => keys.clear());
 
 // ---- Pointer ----
@@ -386,9 +458,11 @@ function pinchOf(): { d: number; a: number; mid: [number, number] } {
 
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  closeMenu();
+  if (walking) { walkDown(e); return; }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   glide = null;
-  (document.activeElement as HTMLElement | null)?.blur?.();
   if (pointers.size === 2) {
     endStroke();
     cancelRamp();
@@ -411,12 +485,15 @@ canvas.addEventListener('pointerdown', (e) => {
     if (p) ramping = { from: p, to: vec3.clone(p) };
     return;
   }
+  if (tool === 'stamp') { stampAt(e.clientX, e.clientY); return; }
+  if (tool === 'grow') { growAt(e.clientX, e.clientY); return; }
   const p = brushAt(e.clientX, e.clientY);
   stroke = { x: e.clientX, y: e.clientY, target: p?.[1] };
   terrain.beginStroke(tool === 'paint' || tool === 'erase' ? 'splat' : 'heights');
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  if (walking) { walkMove(e); return; }
   const p = pointers.get(e.pointerId);
   if (p) { p.x = e.clientX; p.y = e.clientY; }
   if (pinch && pointers.size >= 2) {
@@ -447,7 +524,7 @@ canvas.addEventListener('pointermove', (e) => {
     return;
   }
   if (stroke) { stroke.x = e.clientX; stroke.y = e.clientY; }
-  else if (tool !== 'view' && e.pointerType === 'mouse') {
+  else if (tool !== 'view' && tool !== 'grow' && e.pointerType === 'mouse') {
     const g = brushAt(e.clientX, e.clientY);
     terrain.showBrush(g ?? null, brush.radius);
   }
@@ -472,6 +549,7 @@ function cancelRamp(): void {
 }
 
 const up = (e: PointerEvent) => {
+  if (walking) { walkUp(e); return; }
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinch = null;
   if (pointers.size === 0) {
@@ -484,7 +562,7 @@ const up = (e: PointerEvent) => {
 canvas.addEventListener('pointerup', up);
 canvas.addEventListener('pointercancel', up);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-canvas.addEventListener('wheel', (e) => { e.preventDefault(); glide = null; zoomAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.001)); }, { passive: false });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); if (walking) return; glide = null; zoomAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.001)); }, { passive: false });
 
 // ---- The ramp being drawn, over the canvas ----
 const overlay = $('overlay') as HTMLCanvasElement;
@@ -500,18 +578,20 @@ function toScreen(p: ArrayLike<number>): [number, number] | undefined {
 }
 
 function drawOverlay(): void {
-  if (!ramping && !overlayDrawn) return;
+  if (!ramping && !overlayDrawn && tool !== 'grow' && !stick) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.round(overlay.clientWidth * dpr), h = Math.round(overlay.clientHeight * dpr);
   if (overlay.width !== w || overlay.height !== h) { overlay.width = w; overlay.height = h; }
   octx.setTransform(dpr, 0, 0, dpr, 0, 0);
   octx.clearRect(0, 0, overlay.clientWidth, overlay.clientHeight);
   overlayDrawn = false;
+  mat4.multiply(viewProj, camera.projectionMatrix, view);
+  if (stick) drawStick();
+  else if (tool === 'grow' && !walking) drawGrowMarkers();
   if (!ramping) return;
   const { from: a, to: b } = ramping;
   const dx = b[0] - a[0], dz = b[2] - a[2], len = Math.hypot(dx, dz);
   if (len < 1) return;
-  mat4.multiply(viewProj, camera.projectionMatrix, view);
   const px = -dz / len * brush.radius, pz = dx / len * brush.radius;
   const corners = [
     [a[0] + px, a[1], a[2] + pz], [b[0] + px, b[1], b[2] + pz],
@@ -548,13 +628,342 @@ function applyTool(dt: number): void {
   if (!p) return;
   if (tool === 'paint') terrain.paintAt(layer, p, brush, dt);
   else if (tool === 'erase') terrain.paintAt(0, p, brush, dt, true);
-  else if (tool !== 'view' && tool !== 'ramp') terrain.sculptAt(tool, p, brush, dt, stroke.target);
+  else if (tool === 'terrace') {
+    const l = terrain.toLocal(p);
+    terrain.history.saveAround(terrain.grid, l[0], l[2], brush.radius);
+    terrace(terrain.grid, l[0], l[2], brush, dt, step);
+  } else if (tool === 'erode') {
+    const l = terrain.toLocal(p);
+    terrain.history.saveAround(terrain.grid, l[0], l[2], brush.radius * 1.6);
+    // About 1200 drops a second for a 14 m brush, more for a bigger one.
+    const drops = Math.min(250, Math.round(1200 * dt * (brush.radius / 14) ** 2));
+    erode(terrain.grid, l[0], l[2], brush, drops);
+  } else if (tool === 'raise' || tool === 'lower' || tool === 'smooth' || tool === 'flatten' || tool === 'noise') {
+    terrain.sculptAt(tool, p, brush, dt, stroke.target);
+  }
 }
 
 // The orbit's target follows the ground under it.
 function followGround(dt: number): void {
   const h = terrain.heightAt(orbit.target[0], orbit.target[2]) ?? 0;
   orbit.target[1] += (h - orbit.target[1]) * Math.min(1, dt * 3);
+}
+
+// ---- Stamps and growing: one tap ----
+
+/** A stamp under a canvas point (one undo step). */
+function stampAt(px: number, py: number): void {
+  const p = brushAt(px, py);
+  if (!p) return;
+  const l = terrain.toLocal(p);
+  terrain.beginStroke('heights');
+  terrain.history.saveAround(terrain.grid, l[0], l[2], brush.radius);
+  stamp(terrain.grid, stampShape, l[0], l[2], brush.radius, brush.strength * 40);
+  terrain.endStroke();
+}
+
+/** The free cells a chunk can be added at, each with where to draw its +. */
+function growSpots(): { cx: number; cz: number; corners: vec3[]; mid: vec3 }[] {
+  if (terrain.grid.count >= MAX_CHUNKS) return [];
+  const size = terrain.grid.settings.size;
+  return terrain.grid.freeNeighbours().map(([cx, cz]) => {
+    // The height at the middle of the border it would share with a neighbour.
+    let y = 0;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (!terrain.grid.get(cx + dx, cz + dz)) continue;
+      y = terrain.grid.heightAt((cx + 0.5 + dx * 0.5) * size + dx, (cz + 0.5 + dz * 0.5) * size + dz) ?? 0;
+      break;
+    }
+    const x0 = cx * size + TERRAIN_ORIGIN[0], z0 = cz * size + TERRAIN_ORIGIN[1];
+    return {
+      cx, cz,
+      corners: [[0, 0], [size, 0], [size, size], [0, size]].map(([u, v]) => vec3.fromValues(x0 + u, y, z0 + v)),
+      mid: vec3.fromValues(x0 + size / 2, y, z0 + size / 2),
+    };
+  });
+}
+
+function drawGrowMarkers(): void {
+  for (const spot of growSpots()) {
+    const quad = spot.corners.map(toScreen), mid = toScreen(spot.mid);
+    if (quad.some((q) => !q) || !mid) continue;
+    octx.beginPath();
+    quad.forEach((q, k) => (k ? octx.lineTo(q![0], q![1]) : octx.moveTo(q![0], q![1])));
+    octx.closePath();
+    octx.fillStyle = 'rgba(157, 255, 63, 0.10)';
+    octx.fill();
+    octx.setLineDash([6, 6]);
+    octx.strokeStyle = 'rgba(157, 255, 63, 0.75)';
+    octx.lineWidth = 1.5;
+    octx.stroke();
+    octx.setLineDash([]);
+    octx.beginPath();
+    octx.arc(mid[0], mid[1], 17, 0, Math.PI * 2);
+    octx.fillStyle = 'rgba(12, 9, 24, 0.8)';
+    octx.fill();
+    octx.strokeStyle = '#9dff3f';
+    octx.stroke();
+    octx.fillStyle = '#9dff3f';
+    octx.font = 'bold 22px system-ui';
+    octx.textAlign = 'center';
+    octx.textBaseline = 'middle';
+    octx.fillText('+', mid[0], mid[1] + 1);
+  }
+  overlayDrawn = true;
+}
+
+/** Whether a canvas point is inside a polygon on the canvas. */
+function inside(pt: [number, number], poly: [number, number][]): boolean {
+  let yes = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) yes = !yes;
+  }
+  return yes;
+}
+
+/** Adds the chunk whose + (or square) is under a canvas point. */
+function growAt(px: number, py: number): void {
+  if (terrain.grid.count >= MAX_CHUNKS) { hint(`O terreno já tem ${MAX_CHUNKS} blocos`); return; }
+  const r = canvas.getBoundingClientRect();
+  const pt: [number, number] = [px - r.left, py - r.top];
+  mat4.multiply(viewProj, camera.projectionMatrix, view);
+  let best: { cx: number; cz: number } | undefined, bestD = 40;
+  for (const spot of growSpots()) {
+    const mid = toScreen(spot.mid), quad = spot.corners.map(toScreen);
+    const d = mid ? Math.hypot(mid[0] - pt[0], mid[1] - pt[1]) : Infinity;
+    const hit = !quad.some((q) => !q) && inside(pt, quad as [number, number][]);
+    if (d < bestD || (hit && !best)) { best = spot; bestD = Math.min(d, bestD); }
+  }
+  if (!best) return;
+  const n = terrain.grid.settings.resolution;
+  terrain.addChunk(best.cx, best.cz);
+  fillChunk(terrain.grid, best.cx, best.cz, reliefAt());
+  touchAround(terrain.grid, { i0: best.cx * n, j0: best.cz * n, i1: (best.cx + 1) * n, j1: (best.cz + 1) * n });
+  hint(`Bloco novo: ${terrain.grid.count} de ${MAX_CHUNKS}`);
+}
+
+// ---- Water: a see-through plane at a level ----
+const water = { on: false, level: 0 };
+const WATER_ALPHA = Number(params.get('wateralpha') ?? 0.7);
+let waterEntity: SceneEntity;
+
+/** A level grid `size` metres across in `n` × `n` squares, facing up both ways round. */
+function waterMesh(size: number, n: number): MeshData {
+  const v: vec3[] = [], uv: vec2[] = [], idx: number[] = [];
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+    v.push(vec3.fromValues((i / n - 0.5) * size, 0, (j / n - 0.5) * size));
+    uv.push(vec2.fromValues(i / n, j / n));
+    if (i && j) {
+      const k = j * (n + 1) + i;
+      idx.push(k - n - 2, k - 1, k, k - n - 2, k, k - n - 1);
+      idx.push(k - n - 2, k, k - 1, k - n - 2, k - n - 1, k);
+    }
+  }
+  const m = new MeshData(v, v.map(() => vec3.fromValues(0, 1, 0)), uv, idx);
+  m.providedNormals = true;
+  return m;
+}
+
+function makeWater(): void {
+  waterEntity = new SceneEntity('Water');
+  const m = new LitMaterial();
+  m.color = new Color(0.12, 0.36, 0.55, WATER_ALPHA);
+  m.specularStrength = 0.6;
+  m.roughness = 0.2;
+  const r = new MeshRendererBehaviour(gl);
+  r.mesh = new Mesh();
+  r.mesh.meshData = waterMesh(6000, 24);
+  r.shader = new LitShader(gl, m);
+  if (WATER_ALPHA < 1) {
+    r.renderLayer = RenderLayer.TRANSPARENT;
+    r.writeToDephBuffer = false;
+  }
+  r.castShadows = false;
+  waterEntity.addBehaviour(r);
+}
+
+function setWater(on: boolean, level: number): void {
+  if (on !== water.on) { if (on) scene.addEntity(waterEntity); else scene.removeEntity(waterEntity); }
+  water.on = on;
+  water.level = level;
+  waterEntity.transform.setLocalPosition(0, level, 0);
+  $('water').classList.toggle('on', on);
+  $('waterBox').style.display = on ? 'flex' : 'none';
+  ($('level') as HTMLInputElement).value = String(level);
+}
+
+// ---- Saving: in the browser after every change, and to a file ----
+const STORE = 'omega-terreno';
+let saved = '', saveAt = 0;
+
+/** Changes whenever the ground, the painting or the water does. */
+function signature(): string {
+  let v = 0;
+  for (const c of terrain.grid.all()) v += c.heightVersion * 3 + c.splatVersion * 7 + c.cx * 101 + c.cz * 13;
+  return `${terrain.grid.count}:${v}:${seed}:${water.on}:${water.level}`;
+}
+
+function worldNow(): SavedWorld {
+  return { v: 1, seed, water: { ...water }, chunks: terrain.saveChunks() };
+}
+
+/** Saves 1.5 s after the last change (not during a stroke). */
+function autosave(now: number): void {
+  if (terrain.history.isOpen) return;
+  const sig = signature();
+  if (sig !== saved) { saved = sig; saveAt = now + 1500; }
+  if (saveAt && now >= saveAt) { saveAt = 0; void saveLocal(false); }
+}
+
+async function saveLocal(say: boolean): Promise<void> {
+  try {
+    localStorage.setItem(STORE, toBase64(await packWorld(worldNow())));
+    $('saved').textContent = `Guardado às ${new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}`;
+    if (say) hint('Guardado neste browser');
+  } catch {
+    $('saved').textContent = 'Não coube no browser: exporta para um ficheiro';
+    if (say) hint('Não coube no browser: exporta para um ficheiro');
+  }
+}
+
+async function loadLocal(): Promise<void> {
+  let text: string | null = null;
+  try { text = localStorage.getItem(STORE); } catch { /* no storage */ }
+  if (!text) return;
+  try {
+    loadWorld(await unpackWorld(fromBase64(text)));
+    hint('Continuas onde ficaste · Novo relevo (no ☰) começa outro');
+  } catch (err) {
+    report(`[aviso] o terreno guardado não abriu: ${String(err)}`);
+  }
+}
+
+function loadWorld(w: SavedWorld): void {
+  endStroke();
+  cancelRamp();
+  // Remove every chunk (and its entity) first: the chunks' renderers hold the
+  // chunk data, so loading over chunks that have entities would leave them
+  // drawing the old data.
+  for (const c of terrain.grid.all()) terrain.removeChunk(c.cx, c.cz);
+  terrain.loadChunks(w.chunks);
+  terrain.sync();
+  terrain.history.clear();
+  seed = w.seed;
+  setWater(w.water.on, w.water.level);
+  keepInside();
+  saved = signature();
+}
+
+async function exportFile(): Promise<void> {
+  const bytes = await packWorld(worldNow());
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/gzip' }));
+  a.download = `terreno-${new Date().toISOString().slice(0, 10)}.terreno`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+async function importFile(f: File): Promise<void> {
+  try {
+    loadWorld(await unpackWorld(new Uint8Array(await f.arrayBuffer())));
+    hint(`Aberto: ${f.name}`);
+  } catch {
+    hint('Esse ficheiro não é um terreno guardado');
+  }
+}
+
+// ---- Andar: on foot, at eye height ----
+let walking = false, running = false, walkPitch = 0;
+const EYE = 1.7, WALK = 5, RUN = 16;
+/** The touch stick (left part of the screen) and the finger looking around. */
+let stick: { id: number; x0: number; y0: number; x: number; y: number } | null = null;
+let looking: { id: number; x: number; y: number } | null = null;
+
+function setWalking(on: boolean): void {
+  walking = on;
+  document.body.classList.toggle('walking', on);
+  $('walk').textContent = on ? '✕ Sair' : '🚶 Andar';
+  stick = looking = null;
+  pointers.clear();
+  pinch = drag = null;
+  endStroke();
+  cancelRamp();
+  terrain.showBrush(null);
+  glide = null;
+  if (on) {
+    walkPitch = -0.08;
+    hint('Arrasta para olhar · WASD (Shift corre) ou o lado esquerdo do ecrã para andar · Esc sai');
+  } else {
+    orbit.distance = 70;
+    orbit.pitch = 0.35;
+    hint(HINTS[tool]);
+  }
+}
+
+function placeWalker(): void {
+  const t = orbit.target;
+  const ground = terrain?.heightAt(t[0], t[2]) ?? t[1];
+  vec3.set(eye, t[0], ground + EYE, t[2]);
+  const cp = Math.cos(walkPitch);
+  const at = vec3.fromValues(eye[0] - Math.sin(orbit.yaw) * cp, eye[1] + Math.sin(walkPitch), eye[2] - Math.cos(orbit.yaw) * cp);
+  camera.transform.setLocalPosition(eye[0], eye[1], eye[2]);
+  camera.transform.lookAt(at);
+  mat4.lookAt(view, eye, at, [0, 1, 0]);
+}
+
+function walkDown(e: PointerEvent): void {
+  if (e.pointerType !== 'mouse' && !stick && e.clientX < window.innerWidth * 0.4) {
+    stick = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
+  } else if (!looking) looking = { id: e.pointerId, x: e.clientX, y: e.clientY };
+}
+
+function walkMove(e: PointerEvent): void {
+  if (stick?.id === e.pointerId) { stick.x = e.clientX; stick.y = e.clientY; }
+  if (looking?.id === e.pointerId) {
+    orbit.yaw -= (e.clientX - looking.x) * 0.005;
+    walkPitch = clamp(walkPitch - (e.clientY - looking.y) * 0.004, -1.3, 1.3);
+    looking.x = e.clientX;
+    looking.y = e.clientY;
+  }
+}
+
+function walkUp(e: PointerEvent): void {
+  if (stick?.id === e.pointerId) stick = null;
+  if (looking?.id === e.pointerId) looking = null;
+}
+
+/** Walking with the touch stick: 70 px out is full speed (running past it). */
+function moveByStick(dt: number): void {
+  if (!walking || !stick) return;
+  const dx = stick.x - stick.x0, dy = stick.y - stick.y0, len = Math.hypot(dx, dy);
+  if (len < 6) return;
+  const k = Math.min(len / 70, 1.4) / len;
+  const f = -dy * k, r = dx * k;
+  const speed = (Math.hypot(f, r) > 1.15 ? RUN : WALK) * dt;
+  const s = Math.sin(orbit.yaw), c = Math.cos(orbit.yaw);
+  orbit.target[0] += (-s * f + c * r) * speed;
+  orbit.target[2] += (-c * f - s * r) * speed;
+  keepInside();
+}
+
+function drawStick(): void {
+  if (!stick) return;
+  const r = canvas.getBoundingClientRect();
+  const x0 = stick.x0 - r.left, y0 = stick.y0 - r.top;
+  const dx = stick.x - stick.x0, dy = stick.y - stick.y0, len = Math.hypot(dx, dy), k = len > 70 ? 70 / len : 1;
+  octx.beginPath();
+  octx.arc(x0, y0, 70, 0, Math.PI * 2);
+  octx.fillStyle = 'rgba(12, 9, 24, 0.35)';
+  octx.fill();
+  octx.strokeStyle = 'rgba(246, 241, 255, 0.5)';
+  octx.lineWidth = 2;
+  octx.stroke();
+  octx.beginPath();
+  octx.arc(x0 + dx * k, y0 + dy * k, 26, 0, Math.PI * 2);
+  octx.fillStyle = 'rgba(45, 226, 255, 0.7)';
+  octx.fill();
+  overlayDrawn = true;
 }
 
 let last = 0, fpsTime = 0, fpsFrames = 0;
@@ -564,6 +973,7 @@ function frame(now: number): void {
   resize();
   applyTool(dt);
   moveByKeys(dt);
+  moveByStick(dt);
   glideOn(dt);
   followGround(dt);
   placeCamera();
@@ -572,6 +982,7 @@ function frame(now: number): void {
   ($('redo') as HTMLButtonElement).disabled = !terrain.history.canRedo;
   engine.update(dt);
   engine.render();
+  autosave(now);
   fpsFrames++; fpsTime += dt;
   if (fpsTime >= 0.5) { $('stats').textContent = `${Math.round(fpsFrames / fpsTime)} fps`; fpsFrames = 0; fpsTime = 0; }
   requestAnimationFrame(frame);
