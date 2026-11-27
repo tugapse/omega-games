@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "check": "tsc -p bowling && tsc -p golf && tsc -p platformer && tsc -p drift && tsc -p terrain",
+    "check": "tsc -p src/bowling && tsc -p src/golf && tsc -p src/platformer && tsc -p src/drift && tsc -p src/terrain",
     "build": "node scripts/build-games.mjs"
   },
   "license": "MIT",
