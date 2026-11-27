@@ -24,8 +24,17 @@
     .layer.on { border-color: var(--gold) !important; }
     #top { position: fixed; left: 8px; top: max(8px, env(safe-area-inset-top)); display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100vw - 100px); }
     #top button { padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+    #top button.on { border-color: var(--cyan); background: rgba(45, 226, 255, .25); }
+    #menu { position: fixed; right: 8px; top: calc(max(8px, env(safe-area-inset-top)) + 40px); display: none; flex-direction: column; gap: 4px; padding: 6px; min-width: 190px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; z-index: 4; }
+    #menu.open { display: flex; }
+    #menu button { text-align: left; padding: 8px 10px; background: transparent; border: 0; border-radius: 8px; font-size: 13px; }
+    #menu button:hover { background: rgba(255, 255, 255, .08); }
+    #menu hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 2px 0; }
+    #saved { padding: 2px 10px 4px; font-size: 11px; opacity: .7; }
+    #stamps button { min-width: 0; padding: 6px 9px; }
+    body.walking #tools, body.walking #options > :not(#waterBox), body.walking #undo, body.walking #redo, body.walking #home { display: none !important; }
     #hint { position: fixed; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 46px); transform: translateX(-50%); padding: 5px 12px; background: var(--panel); border-radius: 10px; font-size: 12px; pointer-events: none; transition: opacity .4s; text-align: center; max-width: calc(100vw - 32px); }
-    @media (max-width: 520px) { .bar input[type=range] { width: 70px; } #hint { top: calc(max(8px, env(safe-area-inset-top)) + 92px); } }
+    @media (max-width: 520px) { .bar input[type=range] { width: 70px; } #hint, #menu { top: calc(max(8px, env(safe-area-inset-top)) + 84px); } }
     #overlay { pointer-events: none; }
     #diag { position: fixed; left: 8px; right: 8px; top: calc(max(8px, env(safe-area-inset-top)) + 140px); max-height: 45vh; overflow: auto; padding: 8px 10px; background: rgba(40, 6, 12, .9); border: 1px solid #ff3ea5; border-radius: 10px; font: 11px/1.35 monospace; white-space: pre-wrap; display: none; z-index: 5; }
   </style>
@@ -39,17 +48,31 @@
     <button id="home">⌖ Centrar</button>
     <button id="undo">↶ Anular</button>
     <button id="redo">↷ Refazer</button>
-    <button id="bake">Aplicar regras</button>
+    <button id="balls">● Bolas</button>
+    <button id="water">💧 Água</button>
+    <button id="walk">🚶 Andar</button>
+    <button id="more">☰</button>
+  </div>
+  <div id="menu">
+    <button id="save">Guardar agora</button>
+    <button id="export">Exportar ficheiro…</button>
+    <button id="import">Abrir ficheiro…</button>
+    <div id="saved">Guarda-se sozinho neste browser</div>
+    <hr>
+    <button id="bake">Aplicar regras à pintura</button>
     <button id="clear">Limpar pintura</button>
     <button id="regen">Novo relevo</button>
-    <button id="balls">Largar bolas</button>
   </div>
+  <input id="file" type="file" accept=".terreno,application/gzip" hidden>
   <div id="hint">Arrasta para rodar · Shift+arrastar ou dois dedos movem · toque duplo centra</div>
   <div id="options" class="bar">
     <span id="layers" style="display:flex;gap:6px"></span>
+    <span id="stamps" style="display:none;gap:4px"></span>
+    <label id="stepBox" style="display:none">Degrau <input id="step" type="range" min="2" max="20" value="6"></label>
     <label>Tamanho <input id="radius" type="range" min="2" max="60" value="14"></label>
     <label>Força <input id="strength" type="range" min="5" max="100" value="50"></label>
     <label>Dureza <input id="hardness" type="range" min="0" max="95" value="35"></label>
+    <label id="waterBox" style="display:none">💧 Nível <input id="level" type="range" min="-40" max="120" value="0"></label>
   </div>
   <div id="tools" class="bar">
     <button data-tool="view" class="on"><span class="i">✥</span>Ver</button>
@@ -59,6 +82,10 @@
     <button data-tool="flatten"><span class="i">▬</span>Aplanar</button>
     <button data-tool="ramp"><span class="i">◢</span>Rampa</button>
     <button data-tool="noise"><span class="i">⁂</span>Ruído</button>
+    <button data-tool="terrace"><span class="i">≣</span>Socalcos</button>
+    <button data-tool="stamp"><span class="i">◉</span>Carimbo</button>
+    <button data-tool="erode"><span class="i">☂</span>Erosão</button>
+    <button data-tool="grow"><span class="i">⊞</span>Aumentar</button>
     <button data-tool="paint"><span class="i">✎</span>Pintar</button>
     <button data-tool="erase"><span class="i">⌫</span>Apagar</button>
   </div>
