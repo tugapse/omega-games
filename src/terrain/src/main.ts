@@ -903,7 +903,9 @@ function setWalking(on: boolean): void {
 
 function placeWalker(): void {
   const t = orbit.target;
-  const ground = terrain?.heightAt(t[0], t[2]) ?? t[1];
+  let ground = terrain?.heightAt(t[0], t[2]) ?? t[1];
+  // In the water you swim: the eyes stay above the surface.
+  if (water.on) ground = Math.max(ground, water.level - 1.2);
   vec3.set(eye, t[0], ground + EYE, t[2]);
   const cp = Math.cos(walkPitch);
   const at = vec3.fromValues(eye[0] - Math.sin(orbit.yaw) * cp, eye[1] + Math.sin(walkPitch), eye[2] - Math.cos(orbit.yaw) * cp);
