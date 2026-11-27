@@ -1,26 +1,86 @@
 # Omega Drift
 
-A drift racer made with the engine: small, round toy cars on short tracks,
-where sliding well is what counts. Inspired by the mechanics of the genre
-(controlled slides, a boost charged by drifting, ghosts) with its own cars,
-tracks, look, sounds and music, all made in code. Plan and decisions: the
-"Omega Drift: plano" doc. The car has its own physics on a plane (no Rapier),
-so the game stays small and its tests run in Node.
-`npm run build -- drift` bundles it into `docs/drift/`.
+**Small, round toy cars on short tracks, where sliding well is what counts.**
+A drift racer made with the Omega engine: controlled slides, a turbo charged by drifting,
+ghosts and cups, with its own cars, tracks, look, sounds and music, all made in code.
 
-All six phases are done: the car and its drift, the race and the time trial
-with a ghost, drift points and the turbo, rivals and the six tracks in three
-places with four cars, the championship with medals and saved progress, and
-the sound, music and finish.
+**[▶ Play it](https://tugapse.github.io/omega-games/drift/)** · keyboard, gamepad or touch
+
+![Three small cars sliding side by side through a bend in the city at night, tyre smoke behind them](../../shots/drift.jpg)
+
+| | |
+| --- | --- |
+| **Modes** | Campeonato (3 cups of 3 races), Corrida (3 laps against 5 rivals), Contra-relógio (against your ghost) |
+| **Tracks** | 6 in 3 places (city, desert, snow), 755 to 1061 m, each also run backwards in the cups |
+| **Cars** | Bolinha, Faísca, Trovão, Cometa, opened by medals |
+| **Physics** | its own: a bicycle model at 1/120 s (no Rapier), so it is small and tested in Node |
+| **Tests** | 113: the car, the drift assist, every track lapped both ways, races of six, the cups, the music |
+
+<table>
+<tr>
+<td width="33%"><img src="media/city.jpg" alt="The grid at Avenida Néon, neon buildings behind"><br><b>Avenida Néon</b>, in the city at night</td>
+<td width="33%"><img src="media/desert.jpg" alt="The grid at Dunas Douradas, cacti and mesas"><br><b>Dunas Douradas</b>, in the desert</td>
+<td width="33%"><img src="media/snow.jpg" alt="The grid at Pico Gelado, snowy pines"><br><b>Pico Gelado</b>, in the snow</td>
+</tr>
+</table>
 
 ## Playing
 
-- Title screen (a race of bots behind it), then the menu: **Campeonato** (three cups, one per place, of three races against five rivals; a podium opens the next cup), **Corrida** (one race of three laps against five rivals in your car) or **Contra-relógio** (three laps alone against the ghost of your best lap on the track). Pick the track or the cup and the car.
-- Drifting: with the drift assist on (the default; a toggle in the pause screen), hold the handbrake in a bend (space, B or RB on a gamepad, the big DRIFT button on touch) and the car slides round it on its own; steer into the bend to tighten it, let go of the handbrake to straighten out. Drifts earn points; linked ones multiply them up to ×5; they fill the turbo, which fires as a drift ends.
-- Keyboard: ↑/W accelerate, ↓/S brake (and reverse), ←→/A D steer, space the handbrake, R puts the car back on the road, Esc or P pauses. Gamepad: the stick or the cross steers, RT or A accelerates, LT or X brakes, B or RB is the handbrake, Start pauses; in the menus the cross moves, A presses, B goes back. Touch: the car accelerates by itself; drag sideways on the left to steer (down to brake); DRIFT and TRAVÃO on the right.
-- Medals on each of the six tracks: one for the best lap (bronze, silver, gold for a lap faster than L/22, L/26, L/30 s, L the track's length in m) and one for the drift points in a race (past L, 2L, 3.5L). Gold is worth 3, silver 2, bronze 1, of 36 in all; Faísca opens at 4, Trovão at 12, Cometa at 22. Everything is kept in the browser.
+Hold the **handbrake** in a bend and, with the drift assist on (the default), the car slides
+round it on its own: steer into the bend to tighten it, let go to straighten out. Drifts earn
+points, linked drifts multiply them up to **×5**, and they fill the **turbo**, which fires as
+a drift ends.
 
-## The code
+| | Keyboard | Gamepad | Touch |
+| --- | --- | --- | --- |
+| Accelerate | ↑ / W | RT or A | by itself |
+| Brake, reverse | ↓ / S | LT or X | drag down on the left, TRAVÃO |
+| Steer | ← → / A D | stick or cross | drag sideways on the left |
+| Handbrake (drift) | space | B or RB | DRIFT |
+| Back on the road | R | | ↺ |
+| Pause | Esc or P | Start | ❚❚ |
+
+### Medals
+
+Each track has two: one for the **best lap**, one for the **drift points** in a race
+(L is the track's length in m).
+
+| | 🥉 Bronze | 🥈 Silver | 🥇 Gold |
+| --- | --- | --- | --- |
+| Best lap faster than | L/22 s | L/26 s | L/30 s |
+| Drift points over | L | 2L | 3.5L |
+| Worth | 1 | 2 | 3 |
+
+Of 36 in all: **Faísca** opens at 4, **Trovão** at 12, **Cometa** at 22. Everything is kept in the browser.
+
+## How it is made
+
+```mermaid
+flowchart TB
+  subgraph rules["The race (no engine, tested in Node)"]
+    car["car.ts<br/>bicycle model · drift assist"]
+    driver["driver.ts<br/>rivals · guide curve"]
+    track["track.ts / tracks.ts<br/>6 tracks"]
+    race["race.ts<br/>lights · laps · ghost"]
+    drift["drift.ts<br/>points · turbo"]
+    traffic["traffic.ts<br/>bumping"]
+    cup["cup.ts / progress.ts<br/>cups · medals"]
+  end
+  subgraph show["Look and sound"]
+    look["look.ts<br/>road · scenery · cars"]
+    effects["effects.ts<br/>tyre marks · smoke"]
+    camera["camera.ts"]
+    audio["sound.ts / music.ts"]
+  end
+  input["input.ts<br/>keys · pad · touch"]
+  main["main.ts<br/>screens · loop · HUD"]
+  main --> rules & show & input
+  driver --> car & track
+  look --> track
+```
+
+<details>
+<summary><b>Every file in detail</b></summary>
 
 - `src/car.ts`: the car at a fixed 1/120 s step, a bicycle model (a front and a rear axle). Each axle's tyres push sideways against their slip angle up to their grip (front 1.0, rear 1.1, rear with the handbrake 0.45, times the ground's grip); the rear tyres share their grip between the drive and the side force, so the throttle and the handbrake swing the tail out. Drive up to 11 kN and 120 kW, a soft limiter at 34 m/s, brakes 60/40, reverse with the brake held at a standstill, less lock at speed, a slide assist past 29°. The turbo: 30% more drive and top speed while it lasts.
 - Drift assist (in `src/car.ts`): above 25 km/h the handbrake with the wheel turned a fifth of the way, the handbrake alone where the road bends, full lock held a quarter of a second, or a free slide past 12° starts an assisted drift. The game then holds the car sideways and carries it round at a set rate (0.5 rad/s with the wheel let go, up to 1.05 rad/s steering in, never past 2.4 g). With the guide (below) and the wheel let go it turns at the rate the road needs instead, slowing down when the bend is too tight, swinging across into the next bend of an S, and straightening out on a straight once the handbrake is let go. Steering out, braking, a hard knock or dropping under 25 km/h end it.
@@ -43,4 +103,19 @@ the sound, music and finish.
 
 The tests check the car, the drift assist and the guided drift, every track (no bend tighter than 12 m, no part of it near another, lapped by the grip driver and by a player who only holds the handbrake, both ways round), every car on every track, a race of six on every track, the race, the score, the medals, the cups and the music.
 
-Page options: `?track=<id>` starts a race on a track straight away (`&mode=trial` for a time trial), `?auto` lets a bot drive it, `?touch` shows the touch controls on any screen, `?debug` shows the frame rate, the drawing resolution, the drift angle and the rear tyres' load, `?quality=low|medium|high`.
+</details>
+
+### Page options
+
+| Option | |
+| --- | --- |
+| `?track=<id>` | starts a race straight away (`avenida`, `porto`, `dunas`, `canhao`, `pico`, `vale`; add `-r` for reversed); `&mode=trial` for a time trial |
+| `?auto` | a bot drives it |
+| `?touch` | the touch controls on any screen |
+| `?debug` | frame rate, drawing resolution, drift angle and the rear tyres' load |
+| `?quality=low\|medium\|high` | forces a quality |
+
+```sh
+npm run build -- drift   # → docs/drift/
+npx vitest run src/drift
+```

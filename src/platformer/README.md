@@ -1,14 +1,93 @@
 # Omega Run
 
-A side-on platformer made with the engine: Bit, a small round robot, runs and
-jumps to the flag at the end of each level. Inspired by the mechanics of the
-genre (variable jump height, blocks overhead, stomping enemies, power-ups) with
-its own hero, worlds and look. Plan and decisions: the "Omega Plataformas: plano" doc.
-3D drawn from the side; the hero has its own physics on a tile grid (no Rapier),
-so the game stays small and its tests run in Node.
-`npm run build -- platformer` bundles it into `docs/platformer/`.
+**Bit, a small round robot, runs and jumps to the flag at the end of each level.**
+A side-on platformer made with the Omega engine: variable jump height, blocks overhead,
+stomping enemies and power-ups, with its own hero, worlds and look, drawn in 3D from the side.
 
-Phases done: 1 (the core: tile physics, the jump, the camera, a test level, keyboard and touch), 2 (a living world: coins, bonus blocks and bricks, three enemies, spikes, lives, a checkpoint and the clock), 3 (power-ups, Bit on a skeleton with animations, the flag scored by height), 4 (three worlds of three levels, moving and falling platforms, three hidden big coins per level, the world map), 5 (a boss at the end of each world, saved progress that opens the levels in turn, the title, pause and end screens), 6 (sound effects and a tune per world, particles, camera shake, gamepad, tuning for phones).
+**[▶ Play it](https://tugapse.github.io/omega-games/platformer/)** · keyboard, gamepad or touch
+
+![Bit, a small robot, at the foot of a block staircase in a meadow](../../shots/platformer.jpg)
+
+| | |
+| --- | --- |
+| **Levels** | 9 in 3 worlds, a boss at the end of each, 3 hidden big coins per level |
+| **Worlds** | Prado Verde (meadow), Cavernas de Cristal (caves), Fábrica nas Nuvens (cloud factory) |
+| **Bosses** | Rei Bolota, Geodo, Turbina: three stomps each |
+| **Physics** | its own: boxes on a tile grid at 1/120 s (no Rapier), so it is small and tested in Node |
+| **Tests** | 74, including a bot that finishes every level without dying |
+| **Saved** | levels finished, big coins and best scores, in the browser |
+
+<table>
+<tr>
+<td width="33%"><img src="media/meadow.jpg" alt="Bit in the meadow under a row of bonus blocks"><br><b>Prado Verde</b>: the meadow</td>
+<td width="33%"><img src="media/caves.jpg" alt="Bit jumping between purple crystals in the caves"><br><b>Cavernas de Cristal</b>: low ceilings and crystals</td>
+<td width="33%"><img src="media/clouds.jpg" alt="Bit on girders above the clouds"><br><b>Fábrica nas Nuvens</b>: girders over the sky</td>
+</tr>
+</table>
+
+## Playing
+
+| | Keyboard | Gamepad | Touch |
+| --- | --- | --- | --- |
+| Move | ← → or A D | stick or cross | the pad (left and right halves) |
+| Jump (hold for higher) | space, W or ↑ | A | A |
+| Run / spark | Shift or J | B or X | B (roll onto A to jump while running) |
+| Pause | Esc or P | Start | ❚❚ |
+
+### What is in a level
+
+| | |
+| --- | --- |
+| 🪙 Coins | 200 points; 100 coins give a life |
+| ❓ Bonus blocks, bricks | a coin from below; big Bit breaks bricks |
+| 🔋 Battery | big Bit: a hit only costs the power |
+| 🚀 Thruster | big Bit shoots sparks that bounce along the ground |
+| ⭐ Star | 8 s in which Bit knocks out whatever it touches |
+| 👾 Enemies | Bolota walks, Casco hides in its shell and slides when kicked, Zumbido hovers |
+| 🚩 Flag | 100 to 5000 points by the height Bit touches the pole, plus the time left |
+
+Stomps in a row score 100, 200, 400, 800, then 1000. Three lives, a checkpoint, a 300 s clock.
+
+## How it is made
+
+```mermaid
+flowchart TB
+  subgraph rules["The game (no engine, tested in Node)"]
+    level["level.ts / levels.ts<br/>levels as text"]
+    physics["physics.ts<br/>boxes on the grid"]
+    hero["hero.ts<br/>run · jump"]
+    world["world.ts<br/>coins · enemies · power-ups"]
+    platforms["platforms.ts"]
+    boss["boss.ts<br/>three bosses"]
+    bot["bot.ts<br/>plays every level"]
+    progress["progress.ts"]
+  end
+  subgraph show["Look and sound"]
+    look["look.ts<br/>tiles · scenery · Bit"]
+    things["things.ts<br/>what moves"]
+    bit["bit.ts<br/>skeleton · clips"]
+    effects["effects.ts"]
+    audio["sound.ts / music.ts"]
+  end
+  input["input.ts"]
+  camera["camera.ts"]
+  main["main.ts<br/>screens · loop · HUD"]
+  main --> rules & show & input & camera
+  world --> hero & platforms & boss --> physics --> level
+  bot --> world
+```
+
+A level is written as text, one character per tile:
+
+```text
+                     ?B?                    $
+        o o o                  ===--        #
+  S           g        k    ^^^      v      F
+######################   ####################
+```
+
+<details>
+<summary><b>Every file in detail</b></summary>
 
 - `src/level.ts`: levels as text, one character per tile (`#` ground, `X` block, `B` brick, `?` bonus, `!` power block, `*` star block, `^` spikes) and things placed on it (`o` coin, `$` big coin, `g` walker, `k` shell, `v` flyer, `C` checkpoint, `S` start, `F` flag, `M` the boss, `G` an arena gate, `H` a gate that closes behind Bit), top row first; the grid has y going up and a wall left of column 0. Platforms: a run of `=` (with `-` beside it on its row it slides along that track, with `|` above or below it rides up and down; without a track it stays put) and a run of `~` (falls a moment after Bit lands on it). Each level has a theme (meadow, caves or clouds).
 - `src/levels.ts`: the nine levels in three worlds (Prado Verde, Cavernas de Cristal, Fábrica nas Nuvens), each written as pieces of text side by side, bottom-aligned, ending with the same staircase to the flag; the third level of each world ends in the boss's arena instead. Caves have a low ceiling; the cloud factory is girders over the sky.
@@ -30,4 +109,20 @@ Phases done: 1 (the core: tile physics, the jump, the camera, a test level, keyb
 - `src/things.ts`: what changes, one entity each (the engine uploads a mesh once): bricks and bonus blocks with a hop when bumped, spinning coins and the one popping out of a block, the three enemies (squashed, flipped, hidden in the shell, wings beating), the checkpoint flags, the power-ups (a battery, a little rocket, a star), sparks and the bits of broken bricks, the big coins (a gold coin with a star) and the platforms (falling ones shake).
 - `src/main.ts`: sound and music switched on and off from the title and the pause (kept in the browser), audio started by the first tap or key, a camera shake (bricks, boss thuds and hits, a death), a short vibration on phones (hurt, boss hits), the drawing resolution stepping down when the frame rate stays under 45 fps, the title screen (the bot plays the first level behind it), the pause (❚❚, Esc or P, and when the page is hidden: continue, restart, map), the end screen after the last level (levels finished, big coins, total of the best scores), the world map (locked levels greyed out; a card per world, its levels down a path, with the big coins found and the best score; arrows and Enter, or a tap), a fresh scene for each level, the loop (fixed steps), the camera, the HUD (pause button, lives, coins, big coins, the boss's name and hits left, score, clock), the camera kept inside a boss's arena, dying (a hop and a fall, then the next try from the checkpoint), game over, Bit's clip, size (flickering as it grows or shrinks) and blinking while hurt, the flag (Bit slides down the pole with it, hops off and celebrates; then the score); `window.platformer` exposes hooks for tests.
 
-Page options: `?level=N` starts level N (0 to 8) without the title or the map, `?unlock` opens every level, `?touch` shows the touch buttons on any screen, `?auto` lets the bot play, `?debug` shows the frame rate and the drawing resolution, `?quality=low|medium|high`.
+</details>
+
+### Page options
+
+| Option | |
+| --- | --- |
+| `?level=N` | starts level N (0 to 8) without the title or the map |
+| `?unlock` | opens every level |
+| `?auto` | the bot plays |
+| `?touch` | the touch buttons on any screen |
+| `?debug` | frame rate and drawing resolution |
+| `?quality=low\|medium\|high` | forces a quality |
+
+```sh
+npm run build -- platformer   # → docs/platformer/
+npx vitest run src/platformer
+```

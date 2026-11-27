@@ -1,14 +1,92 @@
 # Omega Golf
 
-A casual golf minigame made with the engine, inspired by the swing-and-wind
-golf of motion-control consoles but with its own course, look and characters.
-Plan and decisions: the "Omega Golf: plano" doc. The ball has its own physics
-(no Rapier), so the game stays small and its tests run in Node.
-`npm run build -- golf` bundles it into `docs/golf/` (GitHub Pages, from `develop`).
+**Nine holes of Vale Omega, a swing you drag with a finger, and wind to read.**
+A casual golf game made with the Omega engine, with its own course, look and golfer. The ball
+has its own physics (no Rapier), so the game stays small and its tests run in Node.
 
-Phases done: 1 (ball, clubs, swing), 2 (the course: nine holes with bunkers,
-water and trees, and wind), 3 (the green: slope dashes, the lip, the map view,
-the fly-in over each hole), 4 (the golfer, animated, and the optional motion swing), 5 (the full game: 9 or 3 holes, one to four players and the computer, scorecard, pause, end screen), 6 (nearest the pin, the range, sounds).
+**[▶ Play it](https://tugapse.github.io/omega-games/golf/)** · mouse, keyboard or touch
+
+![A golfer on the tee, the fairway and the trees beyond](../../shots/golf.jpg)
+
+| | |
+| --- | --- |
+| **Course** | Vale Omega: 9 holes, par 36, with bunkers, lakes, creeks, an island green and wind |
+| **Games** | 9 or 3 holes, Bandeira (nearest the pin), Treino (the range) |
+| **Players** | one to four, and the computer (easy, medium, hard) |
+| **Ball** | gravity, drag and Magnus lift and curve, bounces, rolling down slopes, the cup's lip |
+| **Tests** | 45, one checks every green can be reached in regulation |
+
+<table>
+<tr>
+<td width="33%"><img src="media/intro.jpg" alt="The hole's name, Abertura, over the fairway as the camera flies in"><br>The fly-in over each hole</td>
+<td width="33%"><img src="media/tee.jpg" alt="The fairway from behind the ball, the club chosen at the bottom"><br>On the tee: club, wind, distance</td>
+<td width="33%"><img src="media/map.jpg" alt="The hole seen from above"><br>The map view (M)</td>
+</tr>
+</table>
+
+## Playing
+
+**Drag down** to take the club back (that is the power), then **turn back up** to hit: the swing
+goes off as the finger turns, no need to let go. A flick within 14° of straight goes straight;
+the curve grows past that. A sideways drag aims.
+
+| | Mouse / touch | Keyboard |
+| --- | --- | --- |
+| Aim | drag sideways | ← → |
+| Change club | ‹ › by the club | ↑ ↓ |
+| Swing | drag down, turn up | hold space (or Enter), let go |
+| Curve | the angle of the flick | Q / E while holding |
+| Map | MAPA | M |
+| Pause | ❚❚ | Esc or P |
+
+### The clubs
+
+| Club | Full shot from the fairway |
+| --- | --- |
+| Driver | about 224 m |
+| Wood | about 190 m |
+| Iron | about 150 m |
+| Wedge | about 90 m (and less held back by sand) |
+| Putter | a putt's power is the distance on a flat green, up to 20 m |
+
+The rough and sand take speed off. On the green, dashes flow downhill (white, gold, pink as it steepens).
+
+### The holes
+
+| # | Hole | | # | Hole | | # | Hole |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Abertura | | 4 | Duna | | 7 | Colina |
+| 2 | Lago Azul | | 5 | Ribeiro | | 8 | Cotovelo |
+| 3 | Pinhal | | 6 | Ilha | | 9 | Regresso |
+
+## How it is made
+
+```mermaid
+flowchart TB
+  subgraph rules["The game (no engine, tested in Node)"]
+    terrain["terrain.ts<br/>height · surfaces"]
+    ball["ball.ts<br/>flight · bounce · roll · cup"]
+    clubs["clubs.ts"]
+    course["course.ts / holes.ts<br/>9 holes in code"]
+    swing["swing.ts<br/>the gesture"]
+    cpu["cpu.ts<br/>simulates its shots"]
+    match["match.ts / modes.ts / score.ts"]
+  end
+  subgraph show["Look and sound"]
+    look["look.ts<br/>ground · water · trees"]
+    golfer["golfer.ts<br/>skeleton · clips"]
+    audio["sound.ts / music.ts"]
+  end
+  gyro["gyro.ts<br/>motion swing"]
+  main["main.ts<br/>screens · turns · camera · HUD"]
+  main --> rules & show & gyro
+  ball --> terrain
+  course --> ball
+  cpu --> ball & clubs & course
+```
+
+<details>
+<summary><b>Every file in detail</b></summary>
 
 - `src/terrain.ts`: the ground: a height grid sampled bilinearly (height, normal, `downhill`) and a surface grid (tee, fairway, rough, sand, green, water, out), with how each surface plays (bounce, rolling resistance).
 - `src/ball.ts`: the ball: flight with gravity, drag and the Magnus effect (backspin lifts, sidespin curves), wind, bounces (backspin bites), rolling down slopes (5/7 g), the cup (catches rolls under 1.5 m/s; a faster ball catches the lip once and turns away), water and out of bounds, trees (trunks bounce the ball back, leaves slow it); `simulate` plays a shot to the end without drawing.
@@ -27,9 +105,17 @@ the fly-in over each hole), 4 (the golfer, animated, and the optional motion swi
 - `src/look.ts`: the golfer's meshes (cap, glove, club heads: wood, blade, putter); per hole, built the first time it is played: the terrain mesh and its painted surfaces, water surfaces, trees merged into two meshes (the engine has no instancing); shared: ball, flag and cup, the landing marker, sun and sky.
 - `src/main.ts`: start-up, the start screen (game, players and names, computer), turns with a banner, the scorecard after each hole, pause (Esc, P, leaving the page), the end screen with the ranking and a record per device, states (intro fly-in, aim, swing, flight, result), HUD, camera, the trail, the green's slope (dashes flowing downhill: white, gold, pink as it steepens), the map view from above, the pole taken out for short putts. Keys: M map, arrows aim and change club, hold space (or Enter) for power and let go to hit, Q/E while holding curve left/right.
 
+</details>
+
+### Page options
+
+| Option | |
+| --- | --- |
+| `?gyro` | the motion-swing button (hold, swing the phone, let go) |
+| `?debug` | frame rate |
+| `?quality=low\|medium\|high` | forces a quality |
+
 ```sh
-npm test
-npm run check
-npm run build -- golf
-cd docs/golf && python3 -m http.server 8778
+npm run build -- golf   # → docs/golf/
+npx vitest run src/golf
 ```
