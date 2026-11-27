@@ -26,14 +26,17 @@
     #top button { padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
     #hint { position: fixed; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 46px); transform: translateX(-50%); padding: 5px 12px; background: var(--panel); border-radius: 10px; font-size: 12px; pointer-events: none; transition: opacity .4s; text-align: center; max-width: calc(100vw - 32px); }
     @media (max-width: 520px) { .bar input[type=range] { width: 70px; } #hint { top: calc(max(8px, env(safe-area-inset-top)) + 92px); } }
+    #overlay { pointer-events: none; }
     #diag { position: fixed; left: 8px; right: 8px; top: calc(max(8px, env(safe-area-inset-top)) + 140px); max-height: 45vh; overflow: auto; padding: 8px 10px; background: rgba(40, 6, 12, .9); border: 1px solid #ff3ea5; border-radius: 10px; font: 11px/1.35 monospace; white-space: pre-wrap; display: none; z-index: 5; }
   </style>
 </head>
 <body>
   <canvas id="view"></canvas>
+  <canvas id="overlay"></canvas>
   <div id="stats"></div>
   <div id="diag"></div>
   <div id="top">
+    <button id="home">⌖ Centrar</button>
     <button id="undo">↶ Anular</button>
     <button id="redo">↷ Refazer</button>
     <button id="bake">Aplicar regras</button>
@@ -41,11 +44,12 @@
     <button id="regen">Novo relevo</button>
     <button id="balls">Largar bolas</button>
   </div>
-  <div id="hint">Arrasta para rodar a câmara · dois dedos para aproximar</div>
+  <div id="hint">Arrasta para rodar · Shift+arrastar ou dois dedos movem · toque duplo centra</div>
   <div id="options" class="bar">
     <span id="layers" style="display:flex;gap:6px"></span>
     <label>Tamanho <input id="radius" type="range" min="2" max="60" value="14"></label>
     <label>Força <input id="strength" type="range" min="5" max="100" value="50"></label>
+    <label>Dureza <input id="hardness" type="range" min="0" max="95" value="35"></label>
   </div>
   <div id="tools" class="bar">
     <button data-tool="view" class="on"><span class="i">✥</span>Ver</button>
@@ -53,6 +57,7 @@
     <button data-tool="lower"><span class="i">▼</span>Baixar</button>
     <button data-tool="smooth"><span class="i">≈</span>Alisar</button>
     <button data-tool="flatten"><span class="i">▬</span>Aplanar</button>
+    <button data-tool="ramp"><span class="i">◢</span>Rampa</button>
     <button data-tool="noise"><span class="i">⁂</span>Ruído</button>
     <button data-tool="paint"><span class="i">✎</span>Pintar</button>
     <button data-tool="erase"><span class="i">⌫</span>Apagar</button>
