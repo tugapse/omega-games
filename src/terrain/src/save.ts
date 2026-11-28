@@ -10,6 +10,8 @@ export interface SavedWorld {
   /** The generator's numbers and the box they were made for (worlds saved before it have only the seed). */
   gen?: GenSettings & { area: Area };
   water: { on: boolean; level: number };
+  /** Trees on and how many (worlds saved before them have none: trees on). */
+  trees?: { on: boolean; density: number };
   chunks: SavedTerrainChunk[];
 }
 

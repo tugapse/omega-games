@@ -33,9 +33,9 @@
     #menu #reset.armed { background: rgba(255, 62, 165, .25); color: #ffd0e8; }
     #saved { padding: 2px 10px 4px; font-size: 11px; opacity: .7; }
     #stamps button { min-width: 0; padding: 6px 9px; }
-    body.walking #tools, body.walking #options > :not(#waterBox), body.walking #undo, body.walking #redo, body.walking #home { display: none !important; }
+    body.walking #tools, body.walking #options > :not(#waterBox):not(#treeBox), body.walking #undo, body.walking #redo, body.walking #home { display: none !important; }
     #hint { position: fixed; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 46px); transform: translateX(-50%); padding: 5px 12px; background: var(--panel); border-radius: 10px; font-size: 12px; pointer-events: none; transition: opacity .4s; text-align: center; max-width: calc(100vw - 32px); }
-    @media (max-width: 520px) { .bar input[type=range] { width: 70px; } #hint, #menu { top: calc(max(8px, env(safe-area-inset-top)) + 84px); } }
+    @media (max-width: 520px) { #top .lbl { display: none; } #top { max-width: calc(100vw - 140px); } .bar input[type=range] { width: 70px; } #hint, #menu { top: calc(max(8px, env(safe-area-inset-top)) + 84px); } }
     #overlay { pointer-events: none; }
     #gen { overflow-x: hidden; box-sizing: border-box; position: fixed; right: 8px; top: calc(max(8px, env(safe-area-inset-top)) + 40px); width: 300px; max-height: calc(100vh - 180px); overflow-y: auto; display: none; flex-direction: column; gap: 8px; padding: 10px 12px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; z-index: 4; font-size: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
     #gen.open { display: flex; }
@@ -72,9 +72,10 @@
     <button id="home">⌖ Centrar</button>
     <button id="undo">↶ Anular</button>
     <button id="redo">↷ Refazer</button>
-    <button id="balls">● Bolas</button>
-    <button id="water">💧 Água</button>
-    <button id="walk">🚶 Andar</button>
+    <button id="balls" title="Bolas">● <span class="lbl">Bolas</span></button>
+    <button id="water" title="Água">💧 <span class="lbl">Água</span></button>
+    <button id="treesBtn" class="on" title="Árvores">🌲 <span class="lbl">Árvores</span></button>
+    <button id="walk" title="Andar">🚶 <span class="lbl">Andar</span></button>
     <button id="more">☰</button>
   </div>
   <div id="menu">
@@ -111,6 +112,7 @@
     <label>Tamanho <input id="radius" type="range" min="2" max="60" value="14"></label>
     <label>Força <input id="strength" type="range" min="5" max="100" value="50"></label>
     <label>Dureza <input id="hardness" type="range" min="0" max="95" value="35"></label>
+    <label id="treeBox">🌲 Densidade <input id="density" type="range" min="5" max="100" value="50"></label>
     <label id="waterBox" style="display:none">💧 Nível <input id="level" type="range" min="-40" max="120" value="0"></label>
   </div>
   <div id="tools" class="bar">
