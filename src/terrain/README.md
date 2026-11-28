@@ -38,7 +38,9 @@ rules, Rapier colliders, undo, LOD, and a toolbox built on top of it.
 
 **☰ → ⛰ Gerador de relevo** (or **G**) opens a panel with a map of the relief from above. Move a
 number and the map changes at once; with **Ver no terreno** on, the terrain follows as you drag.
-Everything the panel does until you close it, sculpt or press **✓ Feito** is one undo step, and
+While a slider moves only the map follows (once the finger rests); the terrain follows a moment
+after you let go. Everything the panel does until you close it, sculpt or press **✓ Feito** is one
+undo step (painting made for the old relief is cleared first, so the rules paint the new one), and
 **↺ Repor** takes it back.
 
 | Number | What it changes |

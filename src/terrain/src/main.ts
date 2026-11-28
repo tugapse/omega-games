@@ -1009,8 +1009,10 @@ let genOpen = false;
 let genPixels: ImageData | null = null;
 let previewQueued = false;
 /** A live generation is one undo step: it stays open while the numbers move, and closes on the next other action. */
-let genStroke: { gen: GenSettings; image: Heightmap | null; area: Area } | null = null;
-let genDirty = false, liveTimer = 0, liveAt = 0, liveCost = 0;
+let genStroke: { gen: GenSettings; image: Heightmap | null; area: Area; cleared: boolean } | null = null;
+let genDirty = false, liveTimer = 0, previewTimer = 0;
+/** How long after a number is let go the terrain follows, and how long the preview waits while one moves. */
+const LIVE_DELAY = 350, PREVIEW_IDLE = 160;
 const genView = $('genView') as HTMLCanvasElement;
 const genCtx = genView.getContext('2d')!;
 const genLive = $('genLive') as HTMLInputElement;
@@ -1044,18 +1046,24 @@ function applyDraft(): void {
   if (!genStroke) {
     endStroke();
     cancelRamp();
-    genStroke = { gen, image: genImage, area: genArea };
+    // Painting made for the old relief would lie on the new one: cleared (its
+    // own undo step), so the rules paint the new ground by height and slope.
+    const cleared = isPainted();
+    if (cleared) { terrain.clearPainting(); hint('Pintura limpa: as regras pintam o relevo novo · ↶ Anular duas vezes repõe-na'); }
+    genStroke = { gen, image: genImage, area: genArea, cleared };
     terrain.beginStroke('heights');
     for (const c of terrain.grid.all()) terrain.history.save(c);
   }
   gen = { ...draft };
   genImage = draftImage;
   genArea = areaOf(terrain.grid);
-  const t = performance.now();
   generate(terrain.grid, reliefAt());
-  liveCost = performance.now() - t;
-  liveAt = performance.now();
   genDirty = false;
+}
+
+function isPainted(): boolean {
+  for (const c of terrain.grid.all()) if (c.splat[0].some((v) => v) || c.splat[1].some((v) => v)) return true;
+  return false;
 }
 
 /** Finishes a live generation: what is on the terrain becomes one undo step. */
@@ -1067,13 +1075,17 @@ function settleGen(): void {
 }
 
 /** The numbers changed: the preview at once, the terrain as often as it can keep up. */
-function draftChanged(): void {
-  queuePreview();
+/**
+ * The numbers changed. While a slider moves nothing heavy runs: the preview
+ * waits for the finger to rest, the terrain for it to let go (`released`).
+ */
+function draftChanged(released = true): void {
+  clearTimeout(previewTimer);
+  previewTimer = window.setTimeout(queuePreview, released ? 0 : PREVIEW_IDLE);
   if (!genLive.checked) return;
   genDirty = true;
-  if (liveTimer) return;
-  const wait = Math.max(0, liveAt + Math.max(90, liveCost * 2) - performance.now());
-  liveTimer = window.setTimeout(() => { liveTimer = 0; if (genDirty) applyDraft(); }, wait);
+  clearTimeout(liveTimer);
+  liveTimer = released ? window.setTimeout(() => { liveTimer = 0; if (genDirty) applyDraft(); }, LIVE_DELAY) : 0;
 }
 
 function queuePreview(): void {
@@ -1137,7 +1149,8 @@ function buildGenPanel(): void {
     row.innerHTML = `<span>${label}</span><input id="gen-${key}" type="range" min="${min}" max="${max}" step="${stepBy}"><output id="gen-${key}-v"></output>`;
     box.appendChild(row);
     const input = row.querySelector('input')!;
-    input.oninput = () => { draft = { ...draft, [key]: Number(input.value) }; showValue(key); draftChanged(); };
+    input.oninput = () => { draft = { ...draft, [key]: Number(input.value) }; showValue(key); draftChanged(false); };
+    input.onchange = () => draftChanged(true);
   }
   const presets = $('genPresets');
   for (const p of PRESETS) {
@@ -1153,7 +1166,8 @@ function buildGenPanel(): void {
     };
     presets.appendChild(b);
   }
-  genSeed.oninput = () => { draft = { ...draft, seed: Math.max(0, Math.floor(Number(genSeed.value) || 0)) }; draftChanged(); };
+  genSeed.oninput = () => { draft = { ...draft, seed: Math.max(0, Math.floor(Number(genSeed.value) || 0)) }; draftChanged(false); };
+  genSeed.onchange = () => draftChanged(true);
   $('genDice').onclick = () => { draft = { ...draft, seed: Math.floor(Math.random() * 100000) }; syncGenInputs(); draftChanged(); };
   genGrey.onchange = () => queuePreview();
   genLive.onchange = () => { $('genApply').textContent = genLive.checked ? '✓ Feito' : '✓ Aplicar'; if (genLive.checked) draftChanged(); };
@@ -1170,6 +1184,7 @@ function buildGenPanel(): void {
       genStroke = null;
       terrain.endStroke();
       terrain.undo();
+      if (before.cleared) terrain.undo();
       gen = before.gen; genImage = before.image; genArea = before.area;
     }
     draft = { ...gen };
