@@ -1,21 +1,14 @@
-// The relief generator: the engine's fractal relief with a few more numbers
-// (a twist of the noise, an island), or a grey image, as one height function
-// over the terrain; a preview of it as pixels (colours with hill shading, or
-// grey); and writing it into every chunk.
-import { DEFAULT_RELIEF, gridBounds, Heightmap, Noise2D, relief, ReliefOptions, TerrainGrid } from 'omega-game-engine';
+// The relief generator's panel data: the numbers it shows, the presets, and
+// a coloured preview of a relief from above. The relief itself is the
+// engine's (heightField: the fractal relief or an image, with a twist and an
+// island).
+import { DEFAULT_RELIEF_FIELD, ReliefFieldOptions, ReliefArea, sampleField } from 'omega-game-engine';
 
-export interface GenSettings extends Required<ReliefOptions> {
-  /** 0 to 1: bends the noise by more noise, for winding valleys and ridges. */
-  warp: number;
-  /** 0 to 1: sinks the ground towards the edges of the area, to the bottom of the relief. */
-  island: number;
-}
-
-/** The terrain-space box the relief was made for (the island is its middle). */
-export interface Area { x0: number; z0: number; x1: number; z1: number }
+export type GenSettings = Required<ReliefFieldOptions>;
+export type Area = ReliefArea;
 
 export const GEN_DEFAULT: GenSettings = {
-  ...DEFAULT_RELIEF,
+  ...DEFAULT_RELIEF_FIELD,
   seed: 7, scale: 360, amplitude: 120, octaves: 5, persistence: 0.42, ridges: 0.3, sharpness: 1.45, base: 8,
   warp: 0, island: 0,
 };
@@ -44,74 +37,6 @@ export const SLIDERS: [keyof GenSettings, string, number, number, number][] = [
   ['island', 'Ilha', 0, 1, 0.01],
 ];
 
-/** The box around every chunk, in terrain space. */
-export function areaOf(grid: TerrainGrid): Area {
-  const b = gridBounds(grid), s = grid.settings.size;
-  if (!b) return { x0: 0, z0: 0, x1: s, z1: s };
-  return { x0: b.cx0 * s, z0: b.cz0 * s, x1: (b.cx1 + 1) * s, z1: (b.cz1 + 1) * s };
-}
-
-const smoothstep = (a: number, b: number, x: number) => {
-  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
-  return t * t * (3 - 2 * t);
-};
-
-/**
- * The generator's height at a terrain-space point. With `image` the heights
- * come from it (stretched over `area`, grey 0 to 1 is base ∓ amplitude/2)
- * instead of the noise; the twist and the island work on either.
- */
-export function heightField(s: GenSettings, area: Area, image?: Heightmap | null): (x: number, z: number) => number {
-  const noise = new Noise2D(s.seed);
-  const warpX = new Noise2D(s.seed + 1013), warpZ = new Noise2D(s.seed + 2027);
-  const w = area.x1 - area.x0, d = area.z1 - area.z0;
-  const cx = area.x0 + w / 2, cz = area.z0 + d / 2, r = Math.min(w, d) / 2;
-  const floor = s.base - s.amplitude / 2 - 6;
-  const reach = s.warp * s.scale * 0.45, f = 1 / s.scale;
-  const fractal = (n: Noise2D, x: number, z: number) => n.get(x * f, z * f) + 0.5 * n.get(x * f * 2 + 5.2, z * f * 2 + 1.3);
-
-  const sample = image
-    ? (x: number, z: number) => {
-        const u = Math.min(Math.max((x - area.x0) / w, 0), 1) * (image.width - 1);
-        const v = Math.min(Math.max((z - area.z0) / d, 0), 1) * (image.height - 1);
-        const i0 = Math.floor(u), j0 = Math.floor(v);
-        const i1 = Math.min(i0 + 1, image.width - 1), j1 = Math.min(j0 + 1, image.height - 1);
-        const tu = u - i0, tv = v - j0, at = (i: number, j: number) => image.data[j * image.width + i];
-        const top = at(i0, j0) + (at(i1, j0) - at(i0, j0)) * tu;
-        const bottom = at(i0, j1) + (at(i1, j1) - at(i0, j1)) * tu;
-        return s.base + ((top + (bottom - top) * tv) / 65535 - 0.5) * s.amplitude;
-      }
-    : (x: number, z: number) => relief(noise, x, z, s);
-
-  return (x, z) => {
-    let px = x, pz = z;
-    if (reach > 0) {
-      px += fractal(warpX, x, z) * reach;
-      pz += fractal(warpZ, x, z) * reach;
-    }
-    let h = sample(px, pz);
-    if (s.island > 0) {
-      const t = Math.hypot(x - cx, z - cz) / r;
-      // A wobbly coast, so the island is not a circle.
-      const edge = smoothstep(0.45, 1.02, t + noise.get(x * 0.012 + 40, z * 0.012 - 40) * 0.18);
-      h += (floor - h) * edge * s.island;
-    }
-    return h;
-  };
-}
-
-/** Writes the height function into every chunk (shared borders get the same value). */
-export function generate(grid: TerrainGrid, height: (x: number, z: number) => number): void {
-  const n = grid.settings.resolution;
-  for (const c of grid.all()) {
-    const sp = c.spacing;
-    for (let j = 0; j <= n; j++) {
-      for (let i = 0; i <= n; i++) c.heights[j * (n + 1) + i] = height(c.originX + i * sp, c.originZ + j * sp);
-    }
-    c.heightVersion++;
-  }
-}
-
 /**
  * The colour of the ground as the demo's rules paint it: grass, dirt on
  * slopes over 22°, rock over 33°, snow over 38 m; under the water, blue by depth.
@@ -136,17 +61,8 @@ export interface Preview { rgba: Uint8ClampedArray; min: number; max: number }
  * with light from the north-west, or grey from the lowest to the highest.
  */
 export function preview(height: (x: number, z: number) => number, area: Area, size: number, grey: boolean, water: number | null): Preview {
-  const hs = new Float32Array(size * size);
-  let min = Infinity, max = -Infinity;
+  const { heights: hs, min, max } = sampleField(height, area, size);
   const sx = (area.x1 - area.x0) / (size - 1), sz = (area.z1 - area.z0) / (size - 1);
-  for (let j = 0; j < size; j++) {
-    for (let i = 0; i < size; i++) {
-      const h = height(area.x0 + i * sx, area.z0 + j * sz);
-      hs[j * size + i] = h;
-      if (h < min) min = h;
-      if (h > max) max = h;
-    }
-  }
   const rgba = new Uint8ClampedArray(size * size * 4);
   const span = max - min || 1;
   for (let j = 0; j < size; j++) {
@@ -169,29 +85,3 @@ export function preview(height: (x: number, z: number) => number, area: Area, si
   return { rgba, min, max };
 }
 
-/**
- * A box blur `r` pixels each way (twice, so nearly a Gaussian), for 8-bit
- * images: their 256 greys are steps of a metre or so, which show as terraces.
- */
-export function smoothHeightmap(map: Heightmap, r = 2): Heightmap {
-  const { width: w, height: h } = map;
-  let src = Float32Array.from(map.data);
-  const tmp = new Float32Array(w * h);
-  const pass = (from: Float32Array, to: Float32Array, horizontal: boolean) => {
-    const lines = horizontal ? h : w, len = horizontal ? w : h;
-    for (let l = 0; l < lines; l++) {
-      for (let k = 0; k < len; k++) {
-        let sum = 0;
-        for (let d = -r; d <= r; d++) {
-          const q = Math.min(Math.max(k + d, 0), len - 1);
-          sum += from[horizontal ? l * w + q : q * w + l];
-        }
-        to[horizontal ? l * w + k : k * w + l] = sum / (2 * r + 1);
-      }
-    }
-  };
-  for (let n = 0; n < 2; n++) { pass(src, tmp, true); pass(tmp, src, false); }
-  const data = new Uint16Array(w * h);
-  for (let i = 0; i < data.length; i++) data[i] = Math.round(src[i]);
-  return { width: w, height: h, data };
-}
