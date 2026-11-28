@@ -37,7 +37,7 @@ Rapier physics, swipe to throw, obstacle lanes, a computer to beat and replays.<
 <td valign="top">
 <a href="src/terrain/"><img src="shots/terrain.jpg" alt="A grassy valley painted by height and slope"></a>
 <h3><a href="src/terrain/">Omega Terreno</a></h3>
-The engine's terrain: generate, sculpt, ramp, stamp, erode, paint, flood, plant, grow and walk it.<br>
+The engine's terrain: generate, sculpt, ramp, stamp, erode, paint, flood, plant trees and grass, grow and walk it.<br>
 <a href="https://tugapse.github.io/omega-games/terrain/">▶ Play</a>
 </td>
 <td valign="top"></td>
