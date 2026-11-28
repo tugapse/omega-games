@@ -52,7 +52,7 @@ The engine's terrain: generate, sculpt, ramp, stamp, erode, paint, flood, plant,
 | **Run** | its own (tile grid) | Bit's skeleton, Animator | chiptunes per world | | levels, coins, scores | 74 |
 | **Golf** | its own (ball flight) | golfer's skeleton | Web Audio | its own height grid | records | 45 |
 | **Bowling** | Rapier | bowler's skeleton | SequencerClock music | | | 53 |
-| **Terreno** | Rapier heightfields | | | `TerrainBehaviour` | the whole terrain | 32 |
+| **Terreno** | Rapier heightfields | | | `TerrainBehaviour` | the whole terrain | 5 |
 
 ## How it is laid out
 

@@ -9,14 +9,9 @@ import {
   LitMaterial, LitShader, Mesh, MeshData, MeshRendererBehaviour, PhysicsWorld, RapierBackend, rawToHeightmap,
   RenderLayer, RenderPipelineSettings, rgbaToHeightmap,
   RenderQuality, Resources, RigidBodyBehaviour, Scene, SceneEntity, SculptTool, SpherePrimitive, TerrainBehaviour,
-  ToneMapping, touchAround,
+  ToneMapping, generateFrom, gridArea as areaOf, heightField, smoothHeightmap, StampShape, TerrainVegetationBehaviour,
 } from 'omega-game-engine';
-import { erode, stamp, StampShape, terrace } from './brushes';
-import { Area, areaOf, generate, GenSettings, GEN_DEFAULT, heightField, preview, PRESETS, SLIDERS, smoothHeightmap } from './generator';
-import { fillChunk } from './grow';
-import { scatterTrees, Tree, TREE_RULES } from './scatter';
-import { treeMeshes, trunkRadius } from './trees';
-import { rampAt } from './ramp';
+import { Area, GenSettings, GEN_DEFAULT, preview, PRESETS, SLIDERS } from './generator';
 import { fromBase64, packWorld, SavedWorld, toBase64, unpackWorld } from './save';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -203,7 +198,7 @@ let genImage: Heightmap | null = null;
 
 function makeRelief(): void {
   genArea = areaOf(terrain.grid);
-  generate(terrain.grid, reliefAt());
+  generateFrom(terrain.grid, reliefAt());
   terrain.history.clear();
 }
 
@@ -250,6 +245,8 @@ async function start(): Promise<void> {
   for (let z = 0; z < 3; z++) for (let x = 0; x < 3; x++) terrain.grid.add(x, z);
   makeRelief();
   entity.addBehaviour(terrain);
+  vegetation = new TerrainVegetationBehaviour(gl);
+  entity.addBehaviour(vegetation);
   scene.addEntity(entity);
 
   world = new PhysicsWorld(await RapierBackend.load(RAPIER), { fixedTimeStep: 1 / 60, maxSubSteps: 4 });
@@ -268,7 +265,7 @@ async function start(): Promise<void> {
   buildStamps();
   if (!params.has('seed')) await loadLocal();
   saved = signature();
-  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls, rampAt, brush, setTool, setWalking, setWater, growAt, worldNow, loadWorld, water, openGen, closeGen, openHeightImage, get gen() { return gen; }, get walking() { return walking; }, get waterEntity() { return waterEntity; } };
+  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls, brush, get vegetation() { return vegetation; }, setTool, setWalking, setWater, growAt, worldNow, loadWorld, water, openGen, closeGen, openHeightImage, get gen() { return gen; }, get walking() { return walking; }, get waterEntity() { return waterEntity; } };
   requestAnimationFrame(frame);
   setTimeout(checkTerrain, 4000);
 }
@@ -569,7 +566,7 @@ function finishRamp(): void {
   const { from, to } = ramping;
   ramping = null;
   if (Math.hypot(to[0] - from[0], to[2] - from[2]) < 1) return;
-  rampAt(terrain, from, to, brush.radius, brush.hardness);
+  terrain.rampAt(from, to, brush.radius, brush.hardness);
 }
 
 function cancelRamp(): void {
@@ -656,17 +653,8 @@ function applyTool(dt: number): void {
   if (!p) return;
   if (tool === 'paint') terrain.paintAt(layer, p, brush, dt);
   else if (tool === 'erase') terrain.paintAt(0, p, brush, dt, true);
-  else if (tool === 'terrace') {
-    const l = terrain.toLocal(p);
-    terrain.history.saveAround(terrain.grid, l[0], l[2], brush.radius);
-    terrace(terrain.grid, l[0], l[2], brush, dt, step);
-  } else if (tool === 'erode') {
-    const l = terrain.toLocal(p);
-    terrain.history.saveAround(terrain.grid, l[0], l[2], brush.radius * 1.6);
-    // About 1200 drops a second for a 14 m brush, more for a bigger one.
-    const drops = Math.min(250, Math.round(1200 * dt * (brush.radius / 14) ** 2));
-    erode(terrain.grid, l[0], l[2], brush, drops);
-  } else if (tool === 'raise' || tool === 'lower' || tool === 'smooth' || tool === 'flatten' || tool === 'noise') {
+  else if (tool === 'terrace') terrain.terraceAt(p, brush, dt, step);
+  else if (tool === 'erode') terrain.erodeAt(p, brush, dt); else if (tool === 'raise' || tool === 'lower' || tool === 'smooth' || tool === 'flatten' || tool === 'noise') {
     terrain.sculptAt(tool, p, brush, dt, stroke.target);
   }
 }
@@ -683,11 +671,7 @@ function followGround(dt: number): void {
 function stampAt(px: number, py: number): void {
   const p = brushAt(px, py);
   if (!p) return;
-  const l = terrain.toLocal(p);
-  terrain.beginStroke('heights');
-  terrain.history.saveAround(terrain.grid, l[0], l[2], brush.radius);
-  stamp(terrain.grid, stampShape, l[0], l[2], brush.radius, brush.strength * 40);
-  terrain.endStroke();
+  terrain.stampAt(stampShape, p, brush.radius, brush.strength * 40);
 }
 
 /** The free cells a chunk can be added at, each with where to draw its +. */
@@ -764,10 +748,7 @@ function growAt(px: number, py: number): void {
     if (d < bestD || (hit && !best)) { best = spot; bestD = Math.min(d, bestD); }
   }
   if (!best) return;
-  const n = terrain.grid.settings.resolution;
-  terrain.addChunk(best.cx, best.cz);
-  fillChunk(terrain.grid, best.cx, best.cz, reliefAt());
-  touchAround(terrain.grid, { i0: best.cx * n, j0: best.cz * n, i1: (best.cx + 1) * n, j1: (best.cz + 1) * n });
+  terrain.growChunk(best.cx, best.cz, reliefAt());
   hint(`Bloco novo: ${terrain.grid.count} de ${MAX_CHUNKS}`);
 }
 
@@ -871,10 +852,6 @@ function loadWorld(w: SavedWorld): void {
   settleGen();
   endStroke();
   cancelRamp();
-  // Remove every chunk (and its entity) first: the chunks' renderers hold the
-  // chunk data, so loading over chunks that have entities would leave them
-  // drawing the old data.
-  for (const c of terrain.grid.all()) terrain.removeChunk(c.cx, c.cz);
   terrain.loadChunks(w.chunks);
   terrain.sync();
   terrain.history.clear();
@@ -883,7 +860,7 @@ function loadWorld(w: SavedWorld): void {
   genArea = area;
   genImage = null;
   if (genOpen) { draft = { ...gen }; draftImage = null; syncGenInputs(); queuePreview(); }
-  setTrees(w.trees?.on ?? true, w.trees?.density ?? TREE_RULES.density);
+  setTrees(w.trees?.on ?? true, w.trees?.density ?? TREE_DENSITY);
   setWater(w.water.on, w.water.level);
   keepInside();
   saved = signature();
@@ -903,7 +880,7 @@ function resetAll(): void {
   terrain.history.clear();
   terrain.sync();
   setWater(false, 0);
-  setTrees(true, TREE_RULES.density);
+  setTrees(true, TREE_DENSITY);
   while (balls.length) scene.removeEntity(balls.pop()!);
   if (walking) setWalking(false);
   orbit.target[0] = orbit.target[2] = 0;
@@ -956,7 +933,7 @@ function setWalking(on: boolean): void {
 
 function placeWalker(): void {
   const t = orbit.target;
-  bumpTrunks(t);
+  if (trees.on) vegetation?.pushOut(t, 0.35);
   let ground = terrain?.heightAt(t[0], t[2]) ?? t[1];
   // In the water you swim: the eyes stay above the surface.
   if (water.on) ground = Math.max(ground, water.level - 1.2);
@@ -1034,7 +1011,9 @@ function frame(now: number): void {
   followGround(dt);
   placeCamera();
   drawOverlay();
-  updateTrees();
+  // A live relief from the generator keeps a stroke open: the trees follow it all the same.
+  if (vegetation) vegetation.holdDuringStrokes = !genStroke;
+  syncVegetation();
   if (genOpen) drawGenView();
   ($('undo') as HTMLButtonElement).disabled = !terrain.history.canUndo;
   ($('redo') as HTMLButtonElement).disabled = !terrain.history.canRedo;
@@ -1042,7 +1021,7 @@ function frame(now: number): void {
   engine.render();
   autosave(now);
   fpsFrames++; fpsTime += dt;
-  if (fpsTime >= 0.5) { $('stats').textContent = `${Math.round(fpsFrames / fpsTime)} fps${trees.on ? ` · ${treeCount()} 🌲` : ''}`; fpsFrames = 0; fpsTime = 0; }
+  if (fpsTime >= 0.5) { $('stats').textContent = `${Math.round(fpsFrames / fpsTime)} fps${trees.on ? ` · ${vegetation?.count ?? 0} 🌲` : ''}`; fpsFrames = 0; fpsTime = 0; }
   requestAnimationFrame(frame);
 }
 
@@ -1105,7 +1084,7 @@ function applyDraft(): void {
   gen = { ...draft };
   genImage = draftImage;
   genArea = areaOf(terrain.grid);
-  generate(terrain.grid, reliefAt());
+  generateFrom(terrain.grid, reliefAt());
   genDirty = false;
 }
 
@@ -1309,26 +1288,11 @@ async function openHeightImage(f: File): Promise<void> {
   }
 }
 
-// ---- Trees: scattered per chunk by the rules (or the painting), one merged mesh per material ----
+// ---- Trees: the engine's vegetation, pines and broadleaves where the grass layer is ----
 
-const trees = { on: true, density: TREE_RULES.density };
-interface ChunkTrees { key: string; list: Tree[]; entities: SceneEntity[] }
-const treesByChunk = new Map<string, ChunkTrees>();
-let treeMats: LitMaterial[] | null = null;
-
-function treeMaterials(): LitMaterial[] {
-  if (treeMats) return treeMats;
-  const make = (r: number, g: number, b: number) => {
-    const m = new LitMaterial();
-    m.color = new Color(r, g, b, 1);
-    m.specularStrength = 0.04;
-    m.roughness = 0.95;
-    return m;
-  };
-  // Trunks, pines, and two greens of broadleaf.
-  treeMats = [make(0.36, 0.25, 0.16), make(0.11, 0.27, 0.15), make(0.24, 0.44, 0.15), make(0.33, 0.5, 0.17)];
-  return treeMats;
-}
+const TREE_DENSITY = 0.5;
+const trees = { on: true, density: TREE_DENSITY };
+let vegetation: TerrainVegetationBehaviour | undefined;
 
 function setTrees(on: boolean, density: number): void {
   trees.on = on;
@@ -1336,72 +1300,15 @@ function setTrees(on: boolean, density: number): void {
   $('treesBtn').classList.toggle('on', on);
   $('treeBox').style.display = on ? 'flex' : 'none';
   ($('density') as HTMLInputElement).value = String(Math.round(density * 100));
+  syncVegetation();
 }
 
-const treeCount = () => { let n = 0; for (const t of treesByChunk.values()) n += t.list.length; return n; };
-
-/**
- * Builds the trees again on the chunks whose ground, painting, water or tree
- * numbers changed: not during a stroke (once it ends), one chunk a frame
- * (about 15 ms each on a desktop: scattering and merging).
- */
-function updateTrees(): void {
-  if (terrain.history.isOpen && !genStroke) return;
-  const rules = { ...TREE_RULES, seed: gen.seed, density: trees.on ? trees.density : 0, water: water.on ? water.level : null };
-  const present = new Set<string>();
-  let built = 0;
-  for (const c of terrain.grid.all()) {
-    const id = `${c.cx},${c.cz}`;
-    present.add(id);
-    const key = `${c.heightVersion}:${c.splatVersion}:${rules.density}:${rules.water}:${rules.seed}`;
-    const old = treesByChunk.get(id);
-    if (old?.key === key || built >= 1) continue;
-    built++;
-    old?.entities.forEach((e) => scene.removeEntity(e));
-    const list = scatterTrees(terrain.grid, c, rules);
-    const entities: SceneEntity[] = [];
-    if (list.length) {
-      const m = treeMeshes(list), mats = treeMaterials();
-      [m.trunks, m.pines, m.crowns[0], m.crowns[1]].forEach((data, k) => {
-        if (!data.indices.length) return;
-        const e = new SceneEntity(`Trees ${id}`);
-        e.transform.setLocalPosition(TERRAIN_ORIGIN[0], 0, TERRAIN_ORIGIN[1]);
-        const r = new MeshRendererBehaviour(gl);
-        r.mesh = new Mesh();
-        r.mesh.meshData = data;
-        r.shader = new LitShader(gl, mats[k]);
-        e.addBehaviour(r);
-        scene.addEntity(e);
-        entities.push(e);
-      });
-    }
-    treesByChunk.set(id, { key, list, entities });
-  }
-  for (const [id, t] of treesByChunk) {
-    if (present.has(id)) continue;
-    t.entities.forEach((e) => scene.removeEntity(e));
-    treesByChunk.delete(id);
-  }
-}
-
-/** On foot, trunks are solid: pushes a world point out of any trunk it is in. */
-function bumpTrunks(p: vec3): void {
-  if (!trees.on) return;
-  const x = p[0] - TERRAIN_ORIGIN[0], z = p[2] - TERRAIN_ORIGIN[1];
-  const size = terrain.grid.settings.size;
-  for (let dz = -1; dz <= 1; dz++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const t = treesByChunk.get(`${Math.floor(x / size) + dx},${Math.floor(z / size) + dz}`);
-      if (!t) continue;
-      for (const tree of t.list) {
-        const ox = x - tree.x, oz = z - tree.z, min = trunkRadius(tree) + 0.35;
-        const d = Math.hypot(ox, oz);
-        if (d >= min || d === 0) continue;
-        p[0] += (ox / d) * (min - d);
-        p[2] += (oz / d) * (min - d);
-      }
-    }
-  }
+/** The vegetation follows the seed, the trees' numbers and the water. */
+function syncVegetation(): void {
+  if (!vegetation) return;
+  vegetation.seed = gen.seed;
+  vegetation.density = trees.on ? trees.density : 0;
+  vegetation.water = water.on ? water.level : null;
 }
 
 buildGenPanel();
