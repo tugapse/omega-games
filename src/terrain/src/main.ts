@@ -1,16 +1,18 @@
 // Omega Terreno: a demo of the engine's terrain. A 3 × 3 terrain of chunks,
 // painted by its height and slope rules; sculpt and paint it with a finger or
-// the mouse, undo, bake the rules into the painting, make a new relief.
+// the mouse, undo, bake the rules into the painting, generate a new relief.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { mat4, vec2, vec3, vec4 } from 'gl-matrix';
 import {
   BrushSettings, cachedGroundTexture, Camera, CanvasViewport, ColliderBehaviour, Color, DefaultResourceLoader,
-  DEFAULT_RELIEF, DependencyManager, DirectionalLight, Engine, generateRelief, Light, LitMaterial, LitShader, Mesh,
-  MeshData, MeshRendererBehaviour, Noise2D, PhysicsWorld, RapierBackend, relief, RenderLayer, RenderPipelineSettings,
+  DependencyManager, DirectionalLight, Engine, exportHeightmap, Heightmap, heightmapToRaw, heightmapToRgba, Light,
+  LitMaterial, LitShader, Mesh, MeshData, MeshRendererBehaviour, PhysicsWorld, RapierBackend, rawToHeightmap,
+  RenderLayer, RenderPipelineSettings, rgbaToHeightmap,
   RenderQuality, Resources, RigidBodyBehaviour, Scene, SceneEntity, SculptTool, SpherePrimitive, TerrainBehaviour,
   ToneMapping, touchAround,
 } from 'omega-game-engine';
 import { erode, stamp, StampShape, terrace } from './brushes';
+import { Area, areaOf, generate, GenSettings, GEN_DEFAULT, heightField, preview, PRESETS, SLIDERS, smoothHeightmap } from './generator';
 import { fillChunk } from './grow';
 import { rampAt } from './ramp';
 import { fromBase64, packWorld, SavedWorld, toBase64, unpackWorld } from './save';
@@ -192,19 +194,20 @@ function moveByKeys(dt: number): void {
 }
 
 let scene: Scene, engine: Engine, terrain: TerrainBehaviour, world: PhysicsWorld;
-let seed = Number(params.get('seed') ?? 7);
-
-const RELIEF = { scale: 360, amplitude: 120, octaves: 5, persistence: 0.42, ridges: 0.3, sharpness: 1.45, base: 8 };
+/** The relief the terrain was generated from (new chunks carry it on), the box it was made for, and its image if it came from one. */
+let gen: GenSettings = { ...GEN_DEFAULT, seed: Number(params.get('seed') ?? GEN_DEFAULT.seed) };
+let genArea: Area = { x0: 0, z0: 0, x1: 384, z1: 384 };
+let genImage: Heightmap | null = null;
 
 function makeRelief(): void {
-  generateRelief(terrain.grid, { seed, ...RELIEF });
+  genArea = areaOf(terrain.grid);
+  generate(terrain.grid, reliefAt());
   terrain.history.clear();
 }
 
 /** The relief's height at a terrain-space point: what a new chunk starts from. */
 function reliefAt(): (x: number, z: number) => number {
-  const noise = new Noise2D(seed), o = { ...DEFAULT_RELIEF, ...RELIEF, seed };
-  return (x, z) => relief(noise, x, z, o);
+  return heightField(gen, genArea, genImage);
 }
 
 async function start(): Promise<void> {
@@ -263,7 +266,7 @@ async function start(): Promise<void> {
   buildStamps();
   if (!params.has('seed')) await loadLocal();
   saved = signature();
-  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls, rampAt, brush, setTool, setWalking, setWater, growAt, worldNow, loadWorld, water, get walking() { return walking; }, get waterEntity() { return waterEntity; } };
+  (window as any).terrainDemo = { scene, terrain, orbit, camera, brushAt, dropBalls, balls, rampAt, brush, setTool, setWalking, setWater, growAt, worldNow, loadWorld, water, openGen, closeGen, openHeightImage, get gen() { return gen; }, get walking() { return walking; }, get waterEntity() { return waterEntity; } };
   requestAnimationFrame(frame);
   setTimeout(checkTerrain, 4000);
 }
@@ -355,6 +358,7 @@ function setTool(t: Tool): void {
   $('stamps').style.display = t === 'stamp' ? 'flex' : 'none';
   $('stepBox').style.display = t === 'terrace' ? 'flex' : 'none';
   hint(HINTS[t]);
+  settleGen();
   if (t === 'view' || t === 'grow') terrain?.showBrush(null);
   cancelRamp();
 }
@@ -402,12 +406,12 @@ $('radius').oninput = (e) => (brush.radius = Number((e.target as HTMLInputElemen
 $('strength').oninput = (e) => (brush.strength = Number((e.target as HTMLInputElement).value) / 100);
 $('hardness').oninput = (e) => (brush.hardness = Number((e.target as HTMLInputElement).value) / 100);
 $('home').onclick = () => (glide = { x: 0, z: 0, ...HOME });
-$('undo').onclick = () => terrain.undo();
-$('redo').onclick = () => terrain.redo();
+$('undo').onclick = () => { settleGen(); terrain.undo(); };
+$('redo').onclick = () => { settleGen(); terrain.redo(); };
 $('step').oninput = (e) => (step = Number((e.target as HTMLInputElement).value));
 $('bake').onclick = () => { terrain.bakeRules(); hint('As regras estão agora na pintura: retoca-as à mão'); closeMenu(); };
 $('clear').onclick = () => { terrain.clearPainting(); hint('Sem pintura: só as regras'); closeMenu(); };
-$('regen').onclick = () => { seed++; makeRelief(); terrain.clearPainting(); terrain.history.clear(); closeMenu(); };
+$('genOpen').onclick = () => openGen();
 $('balls').onclick = () => dropBalls();
 $('more').onclick = () => $('menu').classList.toggle('open');
 $('walk').onclick = () => setWalking(!walking);
@@ -425,11 +429,12 @@ $('file').onchange = (e) => {
 };
 function closeMenu(): void { $('menu').classList.remove('open'); }
 window.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) terrain.redo(); else terrain.undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); settleGen(); if (e.shiftKey) terrain.redo(); else terrain.undo(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || document.activeElement instanceof HTMLInputElement) return;
   running = e.shiftKey;
   if (MOVE_KEYS.includes(e.code)) { e.preventDefault(); keys.add(e.code); }
-  if (e.code === 'Escape') { if (walking) setWalking(false); closeMenu(); }
+  if (e.code === 'Escape') { if (walking) setWalking(false); closeMenu(); closeGen(); }
+  if (e.code === 'KeyG' && !walking) { if (genOpen) closeGen(); else openGen(); }
 });
 window.addEventListener('keyup', (e) => { keys.delete(e.code); running = e.shiftKey; });
 window.addEventListener('blur', () => keys.clear());
@@ -460,6 +465,7 @@ canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   (document.activeElement as HTMLElement | null)?.blur?.();
   closeMenu();
+  settleGen();
   if (walking) { walkDown(e); return; }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   glide = null;
@@ -801,11 +807,11 @@ let saved = '', saveAt = 0;
 function signature(): string {
   let v = 0;
   for (const c of terrain.grid.all()) v += c.heightVersion * 3 + c.splatVersion * 7 + c.cx * 101 + c.cz * 13;
-  return `${terrain.grid.count}:${v}:${seed}:${water.on}:${water.level}`;
+  return `${terrain.grid.count}:${v}:${gen.seed}:${water.on}:${water.level}`;
 }
 
 function worldNow(): SavedWorld {
-  return { v: 1, seed, water: { ...water }, chunks: terrain.saveChunks() };
+  return { v: 1, seed: gen.seed, gen: { ...gen, area: genArea }, water: { ...water }, chunks: terrain.saveChunks() };
 }
 
 /** Saves 1.5 s after the last change (not during a stroke). */
@@ -833,13 +839,14 @@ async function loadLocal(): Promise<void> {
   if (!text) return;
   try {
     loadWorld(await unpackWorld(fromBase64(text)));
-    hint('Continuas onde ficaste · Novo relevo (no ☰) começa outro');
+    hint('Continuas onde ficaste · o Gerador de relevo (no ☰, ou G) faz outro');
   } catch (err) {
     report(`[aviso] o terreno guardado não abriu: ${String(err)}`);
   }
 }
 
 function loadWorld(w: SavedWorld): void {
+  settleGen();
   endStroke();
   cancelRamp();
   // Remove every chunk (and its entity) first: the chunks' renderers hold the
@@ -849,7 +856,11 @@ function loadWorld(w: SavedWorld): void {
   terrain.loadChunks(w.chunks);
   terrain.sync();
   terrain.history.clear();
-  seed = w.seed;
+  const { area, ...settings } = w.gen ?? { ...GEN_DEFAULT, seed: w.seed, area: { x0: 0, z0: 0, x1: 384, z1: 384 } };
+  gen = { ...GEN_DEFAULT, ...settings };
+  genArea = area;
+  genImage = null;
+  if (genOpen) { draft = { ...gen }; draftImage = null; syncGenInputs(); queuePreview(); }
   setWater(w.water.on, w.water.level);
   keepInside();
   saved = signature();
@@ -857,11 +868,7 @@ function loadWorld(w: SavedWorld): void {
 
 async function exportFile(): Promise<void> {
   const bytes = await packWorld(worldNow());
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/gzip' }));
-  a.download = `terreno-${new Date().toISOString().slice(0, 10)}.terreno`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  download(new Blob([bytes as BlobPart], { type: 'application/gzip' }), `terreno-${new Date().toISOString().slice(0, 10)}.terreno`);
 }
 
 async function importFile(f: File): Promise<void> {
@@ -980,6 +987,7 @@ function frame(now: number): void {
   followGround(dt);
   placeCamera();
   drawOverlay();
+  if (genOpen) drawGenView();
   ($('undo') as HTMLButtonElement).disabled = !terrain.history.canUndo;
   ($('redo') as HTMLButtonElement).disabled = !terrain.history.canRedo;
   engine.update(dt);
@@ -990,5 +998,254 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
+
+// ---- The relief generator: numbers, a preview, and the terrain following live ----
+
+const PREVIEW = 160;
+/** What the panel shows; it becomes `gen` when it reaches the terrain. */
+let draft: GenSettings = { ...gen };
+let draftImage: Heightmap | null = null;
+let genOpen = false;
+let genPixels: ImageData | null = null;
+let previewQueued = false;
+/** A live generation is one undo step: it stays open while the numbers move, and closes on the next other action. */
+let genStroke: { gen: GenSettings; image: Heightmap | null; area: Area } | null = null;
+let genDirty = false, liveTimer = 0, liveAt = 0, liveCost = 0;
+const genView = $('genView') as HTMLCanvasElement;
+const genCtx = genView.getContext('2d')!;
+const genLive = $('genLive') as HTMLInputElement;
+const genGrey = $('genGrey') as HTMLInputElement;
+const genSeed = $('genSeed') as HTMLInputElement;
+/** Only the noise has these: an image does not. */
+const NOISE_ONLY: (keyof GenSettings)[] = ['octaves', 'persistence', 'ridges', 'sharpness'];
+
+function openGen(): void {
+  closeMenu();
+  if (walking) setWalking(false);
+  draft = { ...gen };
+  draftImage = genImage;
+  genOpen = true;
+  $('gen').classList.add('open');
+  document.body.classList.add('gen');
+  syncGenInputs();
+  queuePreview();
+}
+
+function closeGen(): void {
+  if (!genOpen) return;
+  settleGen();
+  genOpen = false;
+  $('gen').classList.remove('open');
+  document.body.classList.remove('gen');
+}
+
+/** Writes the draft into every chunk (opening the undo step the first time). */
+function applyDraft(): void {
+  if (!genStroke) {
+    endStroke();
+    cancelRamp();
+    genStroke = { gen, image: genImage, area: genArea };
+    terrain.beginStroke('heights');
+    for (const c of terrain.grid.all()) terrain.history.save(c);
+  }
+  gen = { ...draft };
+  genImage = draftImage;
+  genArea = areaOf(terrain.grid);
+  const t = performance.now();
+  generate(terrain.grid, reliefAt());
+  liveCost = performance.now() - t;
+  liveAt = performance.now();
+  genDirty = false;
+}
+
+/** Finishes a live generation: what is on the terrain becomes one undo step. */
+function settleGen(): void {
+  if (liveTimer) { clearTimeout(liveTimer); liveTimer = 0; }
+  if (genDirty && genLive.checked) applyDraft();
+  genDirty = false;
+  if (genStroke) { genStroke = null; terrain.endStroke(); }
+}
+
+/** The numbers changed: the preview at once, the terrain as often as it can keep up. */
+function draftChanged(): void {
+  queuePreview();
+  if (!genLive.checked) return;
+  genDirty = true;
+  if (liveTimer) return;
+  const wait = Math.max(0, liveAt + Math.max(90, liveCost * 2) - performance.now());
+  liveTimer = window.setTimeout(() => { liveTimer = 0; if (genDirty) applyDraft(); }, wait);
+}
+
+function queuePreview(): void {
+  if (previewQueued) return;
+  previewQueued = true;
+  requestAnimationFrame(() => {
+    previewQueued = false;
+    const area = areaOf(terrain.grid);
+    const t = performance.now();
+    const p = preview(heightField(draft, area, draftImage), area, PREVIEW, genGrey.checked, water.on ? water.level : null);
+    genPixels = new ImageData(p.rgba as unknown as Uint8ClampedArray<ArrayBuffer>, PREVIEW, PREVIEW);
+    $('genInfo').textContent = `${Math.round(p.min)} a ${Math.round(p.max)} m · ${Math.round(area.x1 - area.x0)} × ${Math.round(area.z1 - area.z0)} m${draftImage ? ' · da imagem' : ''} · ${Math.round(performance.now() - t)} ms`;
+  });
+}
+
+/** The preview, with the camera's place and the way it looks. */
+function drawGenView(): void {
+  if (!genPixels) return;
+  genCtx.putImageData(genPixels, 0, 0);
+  const a = areaOf(terrain.grid);
+  const k = PREVIEW / (a.x1 - a.x0);
+  const x = (orbit.target[0] - TERRAIN_ORIGIN[0] - a.x0) * k, y = (orbit.target[2] - TERRAIN_ORIGIN[1] - a.z0) * ((PREVIEW) / (a.z1 - a.z0));
+  genCtx.strokeStyle = 'rgba(255,255,255,.35)';
+  genCtx.lineWidth = 1;
+  const size = terrain.grid.settings.size * k;
+  for (let gx = size; gx < PREVIEW - 1; gx += size) { genCtx.beginPath(); genCtx.moveTo(gx, 0); genCtx.lineTo(gx, PREVIEW); genCtx.stroke(); }
+  for (let gy = size; gy < PREVIEW - 1; gy += size) { genCtx.beginPath(); genCtx.moveTo(0, gy); genCtx.lineTo(PREVIEW, gy); genCtx.stroke(); }
+  genCtx.strokeStyle = '#2de2ff';
+  genCtx.lineWidth = 2;
+  genCtx.beginPath();
+  genCtx.moveTo(x, y);
+  genCtx.lineTo(x - Math.sin(orbit.yaw) * 14, y - Math.cos(orbit.yaw) * 14);
+  genCtx.stroke();
+  genCtx.fillStyle = '#2de2ff';
+  genCtx.beginPath();
+  genCtx.arc(x, y, 3.5, 0, Math.PI * 2);
+  genCtx.fill();
+}
+
+function syncGenInputs(): void {
+  genSeed.value = String(draft.seed);
+  for (const [key] of SLIDERS) {
+    const input = $(`gen-${key}`) as HTMLInputElement;
+    input.value = String(draft[key]);
+    input.disabled = !!draftImage && NOISE_ONLY.includes(key);
+    showValue(key);
+  }
+  $('genNoImg').hidden = !draftImage;
+}
+
+function showValue(key: keyof GenSettings): void {
+  const v = draft[key];
+  const unit = key === 'scale' || key === 'amplitude' || key === 'base' ? ' m' : '';
+  $(`gen-${key}-v`).textContent = (Number.isInteger(v) ? String(v) : v.toFixed(2)) + unit;
+}
+
+function buildGenPanel(): void {
+  const box = $('genSliders');
+  for (const [key, label, min, max, stepBy] of SLIDERS) {
+    const row = document.createElement('label');
+    row.innerHTML = `<span>${label}</span><input id="gen-${key}" type="range" min="${min}" max="${max}" step="${stepBy}"><output id="gen-${key}-v"></output>`;
+    box.appendChild(row);
+    const input = row.querySelector('input')!;
+    input.oninput = () => { draft = { ...draft, [key]: Number(input.value) }; showValue(key); draftChanged(); };
+  }
+  const presets = $('genPresets');
+  for (const p of PRESETS) {
+    const b = document.createElement('button');
+    b.className = 'gbtn';
+    b.textContent = p.name;
+    b.onclick = () => {
+      draft = { ...draft, ...p.settings, seed: draft.seed };
+      draftImage = null;
+      if (p.water && !water.on) setWater(true, 0);
+      syncGenInputs();
+      draftChanged();
+    };
+    presets.appendChild(b);
+  }
+  genSeed.oninput = () => { draft = { ...draft, seed: Math.max(0, Math.floor(Number(genSeed.value) || 0)) }; draftChanged(); };
+  $('genDice').onclick = () => { draft = { ...draft, seed: Math.floor(Math.random() * 100000) }; syncGenInputs(); draftChanged(); };
+  genGrey.onchange = () => queuePreview();
+  genLive.onchange = () => { $('genApply').textContent = genLive.checked ? '✓ Feito' : '✓ Aplicar'; if (genLive.checked) draftChanged(); };
+  $('genApply').onclick = () => {
+    if (!genLive.checked || genDirty || !genStroke) applyDraft();
+    settleGen();
+    hint('Relevo no terreno · ↶ Anular volta ao de antes');
+  };
+  $('genReset').onclick = () => {
+    if (liveTimer) { clearTimeout(liveTimer); liveTimer = 0; }
+    genDirty = false;
+    if (genStroke) {
+      const before = genStroke;
+      genStroke = null;
+      terrain.endStroke();
+      terrain.undo();
+      gen = before.gen; genImage = before.image; genArea = before.area;
+    }
+    draft = { ...gen };
+    draftImage = genImage;
+    syncGenInputs();
+    queuePreview();
+  };
+  $('genClose').onclick = () => closeGen();
+  // A tap on the preview takes the camera there.
+  genView.onclick = (e) => {
+    const r = genView.getBoundingClientRect(), a = areaOf(terrain.grid);
+    glide = {
+      x: TERRAIN_ORIGIN[0] + a.x0 + ((e.clientX - r.left) / r.width) * (a.x1 - a.x0),
+      z: TERRAIN_ORIGIN[1] + a.z0 + ((e.clientY - r.top) / r.height) * (a.z1 - a.z0),
+    };
+  };
+  $('genPng').onclick = () => { void exportHeightImage(); };
+  $('genRaw').onclick = () => {
+    const map = exportHeightmap(terrain.grid);
+    if (map) download(new Blob([heightmapToRaw(map) as BlobPart]), `relevo-${map.width}x${map.height}.r16`);
+  };
+  $('genOpenImg').onclick = () => ($('genFile') as HTMLInputElement).click();
+  $('genFile').onchange = (e) => {
+    const input = e.target as HTMLInputElement;
+    const f = input.files?.[0];
+    input.value = '';
+    if (f) void openHeightImage(f);
+  };
+  $('genNoImg').onclick = () => { draftImage = null; draft = { ...draft, amplitude: GEN_DEFAULT.amplitude, base: GEN_DEFAULT.base }; syncGenInputs(); draftChanged(); };
+}
+
+function download(blob: Blob, name: string): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/** The terrain as it is (sculpting included) as a grey PNG: black −64 m, white 192 m, a pixel per vertex. */
+async function exportHeightImage(): Promise<void> {
+  const map = exportHeightmap(terrain.grid);
+  if (!map) return;
+  const c = document.createElement('canvas');
+  c.width = map.width; c.height = map.height;
+  c.getContext('2d')!.putImageData(new ImageData(heightmapToRgba(map) as unknown as Uint8ClampedArray<ArrayBuffer>, map.width, map.height), 0, 0);
+  const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, 'image/png'));
+  if (blob) download(blob, `relevo-${map.width}x${map.height}.png`);
+}
+
+/** A grey image (or a square .r16) as the relief's source, with the numbers set so the demo's own PNG comes back as it was. */
+async function openHeightImage(f: File): Promise<void> {
+  try {
+    let map: Heightmap;
+    if (/\.(r16|raw)$/i.test(f.name)) {
+      map = rawToHeightmap(new Uint8Array(await f.arrayBuffer()));
+    } else {
+      const bitmap = await createImageBitmap(f);
+      const c = document.createElement('canvas');
+      c.width = bitmap.width; c.height = bitmap.height;
+      const ctx = c.getContext('2d', { willReadFrequently: true })!;
+      ctx.drawImage(bitmap, 0, 0);
+      map = smoothHeightmap(rgbaToHeightmap(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height));
+    }
+    const [lo, hi] = terrain.grid.settings.heightRange;
+    draftImage = map;
+    draft = { ...draft, amplitude: hi - lo, base: (hi + lo) / 2, warp: 0, island: 0 };
+    syncGenInputs();
+    draftChanged();
+    hint(`${f.name}: preto ${lo} m, branco ${hi} m · Altura e Base mudam isso`);
+  } catch (err) {
+    hint(`Não abriu ${f.name}`);
+    report(`[aviso] imagem: ${String(err)}`);
+  }
+}
+
+buildGenPanel();
 setTool('view');
 void start();

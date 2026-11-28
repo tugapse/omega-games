@@ -1,11 +1,14 @@
 // Saving the terrain: the chunks as the engine saves them (TerrainBehaviour.
-// saveChunks), the seed and the water, gzipped and in base64 so a painted
+// saveChunks), the relief's numbers and the water, gzipped and in base64 so a painted
 // 3 × 3 terrain fits in the browser's storage (and in a small file).
 import type { SavedTerrainChunk } from 'omega-game-engine';
+import type { Area, GenSettings } from './generator';
 
 export interface SavedWorld {
   v: 1;
   seed: number;
+  /** The generator's numbers and the box they were made for (worlds saved before it have only the seed). */
+  gen?: GenSettings & { area: Area };
   water: { on: boolean; level: number };
   chunks: SavedTerrainChunk[];
 }
