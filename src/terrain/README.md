@@ -14,8 +14,9 @@ rules, Rapier colliders, undo, LOD, and a toolbox built on top of it.
 | **Painting** | grass, dirt on slopes over 22°, rock over 33°, snow over 38 m; paint any layer over the rules |
 | **Physics** | Rapier heightfield colliders, rebuilt after each stroke; balls to roll down it |
 | **Saving** | by itself in the browser (gzipped, ~400 KB painted), or to a `.terreno` file |
+| **Trees** | pines and broadleaves scattered by the rules or the painting, in woods and clearings; rebuilt where you sculpt |
 | **Relief** | a generator with presets and nine numbers, live on the terrain; heightmaps in and out (PNG, .r16) |
-| **Tests** | 26 (the ramp, the brushes, growing, saving, the generator), in Node |
+| **Tests** | 32 (the ramp, the brushes, growing, saving, the generator, the trees), in Node |
 
 ## What you can do
 
@@ -31,6 +32,26 @@ rules, Rapier colliders, undo, LOD, and a toolbox built on top of it.
 <td><img src="media/phone.jpg" alt="The demo on a phone, the stamp shapes over the toolbar" height="260"><br>The same on a phone: one finger works the tool, two move the camera.</td>
 </tr>
 </table>
+
+### Trees
+
+![Woods of round broadleaves and pines on a slope, a scree of rock between them](media/trees.jpg)
+
+**🌲 Árvores** (on from the start) grows trees on every chunk, and **🌲 Densidade** sets how many
+(the trees follow once the slider is let go). Where they grow:
+
+| | |
+| --- | --- |
+| **The ground** | not on slopes over 25° (thinning from 19°), not above 34 m (the treeline thins from 26 m), not under the water or on its shore |
+| **The painting** | none on painted dirt, rock or snow; painted grass grows them on slopes up to 38° |
+| **Woods** | a large noise makes woods and clearings, with a few trees out in the open |
+| **Kinds** | broadleaves low down, more pines the higher it gets |
+
+The same seed and numbers always give the same trees, and a lower density only takes some away.
+After a stroke (or a new relief, a water level, a painting) only the chunks that changed are
+built again, one a frame. On foot the trunks are solid. Each chunk's trees are four meshes
+(trunks, pines, two greens of crowns): the engine has no instancing yet, and merged meshes work
+with its lights, shadows and fog.
 
 ### The relief generator
 
@@ -82,7 +103,7 @@ work on an image too.
 | ✎ **Pintar** / ⌫ **Apagar** | paints a layer over the rules, or fades the painting back to them | the layer, Tamanho, Força |
 
 Every stroke, ramp and stamp is one step of **↶ Anular** / **↷ Refazer** (Ctrl+Z, Ctrl+Shift+Z).
-**💧 Água** floods the terrain to a level you set; **● Bolas** drops five Rapier balls;
+**💧 Água** floods the terrain to a level you set; **🌲 Árvores** grows woods (below); **● Bolas** drops five Rapier balls;
 the **☰** menu saves, exports and opens files, bakes the rules into the painting, clears it
 opens the relief generator, and **⟲ Recomeçar do zero** (tapped twice) puts everything back as the
 demo starts: 3 × 3 chunks of the original relief, no painting, water or balls, no undo.
@@ -110,9 +131,10 @@ flowchart LR
   grow["grow.ts<br/>a new chunk from the relief"]
   save["save.ts<br/>gzip + base64"]
   gen["generator.ts<br/>relief · preview · images"]
+  scatter["scatter.ts · trees.ts<br/>where trees grow · merged meshes"]
   engine[("omega-game-engine<br/>TerrainBehaviour · TerrainGrid<br/>sculptAt · paintAt · history<br/>PhysicsWorld (Rapier)")]
-  main --> ramp & brushes & grow & save & gen
-  ramp & brushes & grow & gen --> engine
+  main --> ramp & brushes & grow & save & gen & scatter
+  ramp & brushes & grow & gen & scatter --> engine
   main --> engine
 ```
 
@@ -122,11 +144,13 @@ engine as they are.
 
 | File | |
 | --- | --- |
-| `src/main.ts` | the scene (sun, ambient light, fog), the `TerrainBehaviour` and its layers, the Rapier world, the orbit camera (grab to move, zoom to the cursor, keys, glide), picking the ground with `terrain.raycast`, the tools and the overlay (the ramp strip, the + markers, the touch stick), the water, saving, walking, the generator's panel (live on the terrain as one undo step, PNG and .r16 in and out), on-screen errors with the GPU's name |
+| `src/main.ts` | the scene (sun, ambient light, fog), the `TerrainBehaviour` and its layers, the Rapier world, the orbit camera (grab to move, zoom to the cursor, keys, glide), picking the ground with `terrain.raycast`, the tools and the overlay (the ramp strip, the + markers, the touch stick), the water, saving, walking, the generator's panel (live on the terrain as one undo step, PNG and .r16 in and out), the trees per chunk (built again when a chunk changes), on-screen errors with the GPU's name |
 | `src/ramp.ts` | `ramp()` lays a straight slope between two points with soft edges; `rampAt()` does it from world points as one undo step |
 | `src/brushes.ts` | `terrace()`, `stamp()` with its four profiles, and `erode()`: droplet erosion worked on a copy of the heights (about 2 ms for 20 drops) |
 | `src/grow.ts` | `fillChunk()`: the relief over a new chunk, shifted near the borders it shares (inverse-distance from the shared vertices) so it meets sculpted ground exactly |
 | `src/generator.ts` | `heightField()`: the engine's fractal relief (or a grey image) with a twist of the noise and an island, as one height function; `generate()` writes it into every chunk; `preview()` draws it from above, coloured like the rules with hill shading, or grey; the presets; `smoothHeightmap()` for 8-bit images |
+| `src/scatter.ts` | `scatterTrees()`: a candidate per 6 m cell, kept by `suitability()` (slope, treeline, water), the painting (`paintedAt()`) and a woods noise; every candidate draws its random numbers, so the trees stay put |
+| `src/trees.ts` | the shapes (trunk, a pine's tiers, a round crown) merged per chunk into four meshes; `trunkRadius()` for walking |
 | `src/save.ts` | the saved world (chunks as the engine saves them, seed, water) gzipped with `CompressionStream`, and base64 |
 
 ### Page options
