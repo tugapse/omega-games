@@ -84,7 +84,8 @@ work on an image too.
 Every stroke, ramp and stamp is one step of **↶ Anular** / **↷ Refazer** (Ctrl+Z, Ctrl+Shift+Z).
 **💧 Água** floods the terrain to a level you set; **● Bolas** drops five Rapier balls;
 the **☰** menu saves, exports and opens files, bakes the rules into the painting, clears it
-and opens the relief generator.
+opens the relief generator, and **⟲ Recomeçar do zero** (tapped twice) puts everything back as the
+demo starts: 3 × 3 chunks of the original relief, no painting, water or balls, no undo.
 
 ### Moving around
 

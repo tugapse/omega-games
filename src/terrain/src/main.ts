@@ -412,6 +412,23 @@ $('step').oninput = (e) => (step = Number((e.target as HTMLInputElement).value))
 $('bake').onclick = () => { terrain.bakeRules(); hint('As regras estão agora na pintura: retoca-as à mão'); closeMenu(); };
 $('clear').onclick = () => { terrain.clearPainting(); hint('Sem pintura: só as regras'); closeMenu(); };
 $('genOpen').onclick = () => openGen();
+// Asks twice, on the button itself (no browser dialog): nothing of this can be undone.
+let resetArmed = 0;
+$('reset').onclick = () => {
+  const b = $('reset');
+  if (!resetArmed) {
+    b.textContent = '⚠ Toca outra vez: apaga tudo';
+    b.classList.add('armed');
+    resetArmed = window.setTimeout(() => { resetArmed = 0; b.textContent = '⟲ Recomeçar do zero'; b.classList.remove('armed'); }, 3000);
+    return;
+  }
+  clearTimeout(resetArmed);
+  resetArmed = 0;
+  b.textContent = '⟲ Recomeçar do zero';
+  b.classList.remove('armed');
+  closeMenu();
+  resetAll();
+};
 $('balls').onclick = () => dropBalls();
 $('more').onclick = () => $('menu').classList.toggle('open');
 $('walk').onclick = () => setWalking(!walking);
@@ -864,6 +881,28 @@ function loadWorld(w: SavedWorld): void {
   setWater(w.water.on, w.water.level);
   keepInside();
   saved = signature();
+}
+
+/** Back to how the demo starts: 3 × 3 chunks of the original relief, no painting, water or balls, the camera home. */
+function resetAll(): void {
+  settleGen();
+  endStroke();
+  cancelRamp();
+  for (const c of terrain.grid.all()) terrain.removeChunk(c.cx, c.cz);
+  for (let z = 0; z < 3; z++) for (let x = 0; x < 3; x++) terrain.addChunk(x, z);
+  gen = { ...GEN_DEFAULT };
+  genImage = null;
+  makeRelief();
+  terrain.clearPainting();
+  terrain.history.clear();
+  terrain.sync();
+  setWater(false, 0);
+  while (balls.length) scene.removeEntity(balls.pop()!);
+  if (walking) setWalking(false);
+  orbit.target[0] = orbit.target[2] = 0;
+  glide = { x: 0, z: 0, ...HOME };
+  if (genOpen) { draft = { ...gen }; draftImage = null; syncGenInputs(); queuePreview(); }
+  hint('Tudo de novo: o relevo original, 3 × 3 blocos');
 }
 
 async function exportFile(): Promise<void> {
