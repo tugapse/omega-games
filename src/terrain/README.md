@@ -14,6 +14,7 @@ rules, Rapier colliders, undo, LOD, and a toolbox built on top of it.
 | **Painting** | grass, dirt on slopes over 22°, rock over 33°, snow over 38 m; paint any layer over the rules |
 | **Physics** | Rapier heightfield colliders, rebuilt after each stroke; balls to roll down it |
 | **Saving** | by itself in the browser (gzipped, ~400 KB painted), or to a `.terreno` file |
+| **Grass** | tufts of blades swaying in the wind near the camera, where the grass layer is; thins out with distance |
 | **Trees** | pines and broadleaves scattered by the rules or the painting, in woods and clearings; rebuilt where you sculpt |
 | **Relief** | a generator with presets and nine numbers, live on the terrain; heightmaps in and out (PNG, .r16) |
 | **Tests** | 5 here (the generator's panel, saving); the tools and trees are tested in the engine |
@@ -50,8 +51,20 @@ rules, Rapier colliders, undo, LOD, and a toolbox built on top of it.
 The same seed and numbers always give the same trees, and a lower density only takes some away.
 After a stroke (or a new relief, a water level, a painting) only the chunks that changed are
 built again, one a frame. On foot the trunks are solid. It is the engine's `TerrainVegetationBehaviour`:
-each chunk's trees are four merged meshes (trunks, pines, two greens of crowns), which work with
-its lights, shadows and fog until it has instancing.
+each chunk's trees are drawn as instances (trunks, pines, two greens of crowns), a little lighter
+or darker each.
+
+### Grass
+
+![On foot among broadleaves, grass swaying on the slope](media/grass.jpg)
+
+**🌱 Relva** (on from the start) grows grass around the camera: zoom in or walk to see it, it is
+not drawn from far above. The slider sets how thick it is. It grows where the grass layer is,
+like the trees: painting dirt or rock clears it, painting grass grows it, none under the water.
+Tufts of five low-poly blades, darker at the foot, sway in the wind; within 60 m of the camera
+(40 m with `?quality=low`), thinning out towards the edge. It is the engine's
+`TerrainGrassBehaviour`, drawn with instances: about 20 000 tufts on a desktop, a few thousand
+on a phone.
 
 ### The relief generator
 
@@ -103,7 +116,7 @@ work on an image too.
 | ✎ **Pintar** / ⌫ **Apagar** | paints a layer over the rules, or fades the painting back to them | the layer, Tamanho, Força |
 
 Every stroke, ramp and stamp is one step of **↶ Anular** / **↷ Refazer** (Ctrl+Z, Ctrl+Shift+Z).
-**💧 Água** floods the terrain to a level you set; **🌲 Árvores** grows woods (below); **● Bolas** drops five Rapier balls;
+**💧 Água** floods the terrain to a level you set; **🌲 Árvores** grows woods and **🌱 Relva** grass (below); **● Bolas** drops five Rapier balls;
 the **☰** menu saves, exports and opens files, bakes the rules into the painting, clears it
 opens the relief generator, and **⟲ Recomeçar do zero** (tapped twice) puts everything back as the
 demo starts: 3 × 3 chunks of the original relief, no painting, water or balls, no undo.
@@ -123,7 +136,7 @@ The camera never leaves the terrain.
 
 ## How it is made
 
-The demo is mostly page: the terrain, its tools and its trees are the engine's (6.1.0). They
+The demo is mostly page: the terrain, its tools, its trees and its grass are the engine's (6.2.0). They
 were built here first and moved into the engine once they worked.
 
 ```mermaid
@@ -131,14 +144,14 @@ flowchart LR
   main["main.ts<br/>scene · camera · tools · UI · water · saving · walking"]
   gen["generator.ts<br/>presets · sliders · preview colours"]
   save["save.ts<br/>gzip + base64"]
-  engine[("omega-game-engine<br/>TerrainBehaviour: sculptAt · paintAt · rampAt · terraceAt<br/>stampAt · erodeAt · growChunk · loadChunks · history<br/>heightField · generateFrom · heightmaps<br/>TerrainVegetationBehaviour · PhysicsWorld (Rapier)")]
+  engine[("omega-game-engine<br/>TerrainBehaviour: sculptAt · paintAt · rampAt · terraceAt<br/>stampAt · erodeAt · growChunk · loadChunks · history<br/>heightField · generateFrom · heightmaps<br/>TerrainVegetationBehaviour · TerrainGrassBehaviour · PhysicsWorld (Rapier)")]
   main --> gen & save
   main & gen --> engine
 ```
 
 | File | |
 | --- | --- |
-| `src/main.ts` | the scene (sun, ambient light, fog), the `TerrainBehaviour` and its layers, the `TerrainVegetationBehaviour` (the engine's pines and broadleaves on the grass layer), the Rapier world, the orbit camera (grab to move, zoom to the cursor, keys, glide), picking the ground with `terrain.raycast`, the tools (each one call to the terrain) and the overlay (the ramp strip, the + markers, the touch stick), the water, saving, walking (trunks solid with `vegetation.pushOut`), the generator's panel (live on the terrain as one undo step, PNG and .r16 in and out), on-screen errors with the GPU's name |
+| `src/main.ts` | the scene (sun, ambient light, fog), the `TerrainBehaviour` and its layers, the `TerrainVegetationBehaviour` (the engine's pines and broadleaves on the grass layer), the `TerrainGrassBehaviour`, the Rapier world, the orbit camera (grab to move, zoom to the cursor, keys, glide), picking the ground with `terrain.raycast`, the tools (each one call to the terrain) and the overlay (the ramp strip, the + markers, the touch stick), the water, saving, walking (trunks solid with `vegetation.pushOut`), the generator's panel (live on the terrain as one undo step, PNG and .r16 in and out), on-screen errors with the GPU's name |
 | `src/generator.ts` | the generator's numbers and presets, and `preview()`: a relief from above (the engine's `sampleField`), coloured like the rules with hill shading, or grey |
 | `src/save.ts` | the saved world (chunks as the engine saves them, the relief's numbers, water, trees) gzipped with `CompressionStream`, and base64 |
 

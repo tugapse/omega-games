@@ -12,6 +12,8 @@ export interface SavedWorld {
   water: { on: boolean; level: number };
   /** Trees on and how many (worlds saved before them have none: trees on). */
   trees?: { on: boolean; density: number };
+  /** Grass on and how much (0 to 1). */
+  grass?: { on: boolean; density: number };
   chunks: SavedTerrainChunk[];
 }
 

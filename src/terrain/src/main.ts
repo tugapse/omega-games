@@ -9,7 +9,7 @@ import {
   LitMaterial, LitShader, Mesh, MeshData, MeshRendererBehaviour, PhysicsWorld, RapierBackend, rawToHeightmap,
   RenderLayer, RenderPipelineSettings, rgbaToHeightmap,
   RenderQuality, Resources, RigidBodyBehaviour, Scene, SceneEntity, SculptTool, SpherePrimitive, TerrainBehaviour,
-  ToneMapping, generateFrom, gridArea as areaOf, heightField, smoothHeightmap, StampShape, TerrainVegetationBehaviour,
+  ToneMapping, generateFrom, gridArea as areaOf, heightField, smoothHeightmap, StampShape, TerrainGrassBehaviour, TerrainVegetationBehaviour,
 } from 'omega-game-engine';
 import { Area, GenSettings, GEN_DEFAULT, preview, PRESETS, SLIDERS } from './generator';
 import { fromBase64, packWorld, SavedWorld, toBase64, unpackWorld } from './save';
@@ -247,6 +247,10 @@ async function start(): Promise<void> {
   entity.addBehaviour(terrain);
   vegetation = new TerrainVegetationBehaviour(gl);
   entity.addBehaviour(vegetation);
+  grass = new TerrainGrassBehaviour(gl);
+  // Phones and slow GPUs: less grass, nearer.
+  if (quality === RenderQuality.Low) { grass.radius = 40; GRASS_FULL = 1.5; }
+  entity.addBehaviour(grass);
   scene.addEntity(entity);
 
   world = new PhysicsWorld(await RapierBackend.load(RAPIER), { fixedTimeStep: 1 / 60, maxSubSteps: 4 });
@@ -433,6 +437,8 @@ $('more').onclick = () => $('menu').classList.toggle('open');
 $('walk').onclick = () => setWalking(!walking);
 $('water').onclick = () => setWater(!water.on, water.level);
 $('treesBtn').onclick = () => setTrees(!trees.on, trees.density);
+$('grassBtn').onclick = () => setGrass(!grassState.on, grassState.density);
+$('grassDensity').onchange = (e) => setGrass(true, Number((e.target as HTMLInputElement).value) / 100);
 // Like the generator: the trees follow once the slider is let go.
 $('density').onchange = (e) => setTrees(true, Number((e.target as HTMLInputElement).value) / 100);
 $('level').oninput = (e) => setWater(true, Number((e.target as HTMLInputElement).value));
@@ -810,11 +816,11 @@ let saved = '', saveAt = 0;
 function signature(): string {
   let v = 0;
   for (const c of terrain.grid.all()) v += c.heightVersion * 3 + c.splatVersion * 7 + c.cx * 101 + c.cz * 13;
-  return `${terrain.grid.count}:${v}:${gen.seed}:${water.on}:${water.level}:${trees.on}:${trees.density}`;
+  return `${terrain.grid.count}:${v}:${gen.seed}:${water.on}:${water.level}:${trees.on}:${trees.density}:${grassState.on}:${grassState.density}`;
 }
 
 function worldNow(): SavedWorld {
-  return { v: 1, seed: gen.seed, gen: { ...gen, area: genArea }, water: { ...water }, trees: { on: trees.on, density: trees.density }, chunks: terrain.saveChunks() };
+  return { v: 1, seed: gen.seed, gen: { ...gen, area: genArea }, water: { ...water }, trees: { on: trees.on, density: trees.density }, grass: { ...grassState }, chunks: terrain.saveChunks() };
 }
 
 /** Saves 1.5 s after the last change (not during a stroke). */
@@ -861,6 +867,7 @@ function loadWorld(w: SavedWorld): void {
   genImage = null;
   if (genOpen) { draft = { ...gen }; draftImage = null; syncGenInputs(); queuePreview(); }
   setTrees(w.trees?.on ?? true, w.trees?.density ?? TREE_DENSITY);
+  setGrass(w.grass?.on ?? true, w.grass?.density ?? 0.7);
   setWater(w.water.on, w.water.level);
   keepInside();
   saved = signature();
@@ -881,6 +888,7 @@ function resetAll(): void {
   terrain.sync();
   setWater(false, 0);
   setTrees(true, TREE_DENSITY);
+  setGrass(true, 0.7);
   while (balls.length) scene.removeEntity(balls.pop()!);
   if (walking) setWalking(false);
   orbit.target[0] = orbit.target[2] = 0;
@@ -1013,6 +1021,7 @@ function frame(now: number): void {
   drawOverlay();
   // A live relief from the generator keeps a stroke open: the trees follow it all the same.
   if (vegetation) vegetation.holdDuringStrokes = !genStroke;
+  if (grass) grass.holdDuringStrokes = !genStroke;
   syncVegetation();
   if (genOpen) drawGenView();
   ($('undo') as HTMLButtonElement).disabled = !terrain.history.canUndo;
@@ -1021,7 +1030,7 @@ function frame(now: number): void {
   engine.render();
   autosave(now);
   fpsFrames++; fpsTime += dt;
-  if (fpsTime >= 0.5) { $('stats').textContent = `${Math.round(fpsFrames / fpsTime)} fps${trees.on ? ` · ${vegetation?.count ?? 0} 🌲` : ''}`; fpsFrames = 0; fpsTime = 0; }
+  if (fpsTime >= 0.5) { $('stats').innerHTML = `${Math.round(fpsFrames / fpsTime)} fps<span class="cnt">${trees.on ? ` · ${vegetation?.count ?? 0} 🌲` : ''}${grassState.on ? ` · ${Math.round((grass?.drawn ?? 0) / 1000)}k 🌱` : ''}</span>`; fpsFrames = 0; fpsTime = 0; }
   requestAnimationFrame(frame);
 }
 
@@ -1309,9 +1318,31 @@ function syncVegetation(): void {
   vegetation.seed = gen.seed;
   vegetation.density = trees.on ? trees.density : 0;
   vegetation.water = water.on ? water.level : null;
+  if (grass) {
+    grass.seed = gen.seed;
+    grass.density = grassState.on ? grassState.density * GRASS_FULL : 0;
+    grass.water = vegetation.water;
+  }
+}
+
+// ---- Grass: the engine's, near the camera ----
+
+/** Tufts a square metre at full density (less on slow devices). */
+let GRASS_FULL = 5;
+const grassState = { on: true, density: 0.7 };
+let grass: TerrainGrassBehaviour | undefined;
+
+function setGrass(on: boolean, density: number): void {
+  grassState.on = on;
+  grassState.density = density;
+  $('grassBtn').classList.toggle('on', on);
+  $('grassBox').style.display = on ? 'flex' : 'none';
+  ($('grassDensity') as HTMLInputElement).value = String(Math.round(density * 100));
+  syncVegetation();
 }
 
 buildGenPanel();
 setTrees(trees.on, trees.density);
+setGrass(grassState.on, grassState.density);
 setTool('view');
 void start();
