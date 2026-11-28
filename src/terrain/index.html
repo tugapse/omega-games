@@ -36,6 +36,29 @@
     #hint { position: fixed; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 46px); transform: translateX(-50%); padding: 5px 12px; background: var(--panel); border-radius: 10px; font-size: 12px; pointer-events: none; transition: opacity .4s; text-align: center; max-width: calc(100vw - 32px); }
     @media (max-width: 520px) { .bar input[type=range] { width: 70px; } #hint, #menu { top: calc(max(8px, env(safe-area-inset-top)) + 84px); } }
     #overlay { pointer-events: none; }
+    #gen { overflow-x: hidden; box-sizing: border-box; position: fixed; right: 8px; top: calc(max(8px, env(safe-area-inset-top)) + 40px); width: 300px; max-height: calc(100vh - 180px); overflow-y: auto; display: none; flex-direction: column; gap: 8px; padding: 10px 12px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; z-index: 4; font-size: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    #gen.open { display: flex; }
+    #gen h2 { margin: 0; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+    #gen hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 2px 0; }
+    #genView { box-sizing: border-box; position: static; width: 100%; height: auto; aspect-ratio: 1; border-radius: 10px; border: 1px solid var(--line); cursor: crosshair; touch-action: manipulation; }
+    #genInfo { font: 11px monospace; opacity: .75; text-align: center; margin-top: -2px; }
+    #gen .row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    #gen .row label { display: flex; align-items: center; gap: 5px; }
+    #genSliders { display: flex; flex-direction: column; gap: 3px; }
+    #genSliders label { display: grid; grid-template-columns: 80px 1fr 50px; align-items: center; gap: 6px; }
+    #genSliders input { width: 100%; min-width: 0; margin: 0; accent-color: var(--cyan); }
+    #genSliders input:disabled { opacity: .3; }
+    #genSliders output { text-align: right; font-variant-numeric: tabular-nums; opacity: .85; }
+    #genSeed { width: 74px; padding: 4px 6px; font: inherit; color: inherit; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); border-radius: 8px; }
+    .gbtn { padding: 5px 9px; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+    .gbtn:hover { background: rgba(255, 255, 255, .12); }
+    .gbtn.main { border-color: var(--cyan); background: rgba(45, 226, 255, .18); font-weight: 600; }
+    #gen h2 .gbtn { padding: 2px 8px; }
+    @media (max-width: 520px) {
+      #gen { left: 8px; right: 8px; width: auto; top: calc(max(8px, env(safe-area-inset-top)) + 84px); max-height: calc(100vh - 100px); }
+      #genView { width: 62%; align-self: center; }
+      body.gen #options, body.gen #tools, body.gen #hint { display: none !important; }
+    }
     #diag { position: fixed; left: 8px; right: 8px; top: calc(max(8px, env(safe-area-inset-top)) + 140px); max-height: 45vh; overflow: auto; padding: 8px 10px; background: rgba(40, 6, 12, .9); border: 1px solid #ff3ea5; border-radius: 10px; font: 11px/1.35 monospace; white-space: pre-wrap; display: none; z-index: 5; }
   </style>
 </head>
@@ -61,7 +84,20 @@
     <hr>
     <button id="bake">Aplicar regras à pintura</button>
     <button id="clear">Limpar pintura</button>
-    <button id="regen">Novo relevo</button>
+    <button id="genOpen">⛰ Gerador de relevo… <small style="opacity:.6">(G)</small></button>
+  </div>
+  <div id="gen">
+    <h2>⛰ Gerador de relevo <button id="genClose" class="gbtn" title="Fechar (Esc)">✕</button></h2>
+    <canvas id="genView" width="160" height="160" title="Toca para levar a câmara lá"></canvas>
+    <div id="genInfo"></div>
+    <div class="row" id="genPresets"></div>
+    <div class="row">Semente <input id="genSeed" type="number" min="0" max="99999"> <button id="genDice" class="gbtn" title="Outra semente">🎲</button></div>
+    <div id="genSliders"></div>
+    <div class="row"><label><input id="genLive" type="checkbox" checked> Ver no terreno</label><label><input id="genGrey" type="checkbox"> Em cinzento</label></div>
+    <div class="row"><button id="genApply" class="gbtn main">✓ Feito</button><button id="genReset" class="gbtn" title="Volta ao relevo de antes destas mudanças">↺ Repor</button></div>
+    <hr>
+    <div class="row">Heightmap <button id="genPng" class="gbtn" title="O terreno como está, em PNG cinzento">⤓ PNG</button><button id="genRaw" class="gbtn" title="16 bits, para outros programas">⤓ .r16</button><button id="genOpenImg" class="gbtn">Abrir imagem…</button><button id="genNoImg" class="gbtn" hidden>✕ Imagem</button></div>
+    <input id="genFile" type="file" accept="image/*,.r16,.raw" hidden>
   </div>
   <input id="file" type="file" accept=".terreno,application/gzip" hidden>
   <div id="hint">Arrasta para rodar · Shift+arrastar ou dois dedos movem · toque duplo centra</div>

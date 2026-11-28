@@ -37,7 +37,7 @@ Rapier physics, swipe to throw, obstacle lanes, a computer to beat and replays.<
 <td valign="top">
 <a href="src/terrain/"><img src="shots/terrain.jpg" alt="A grassy valley painted by height and slope"></a>
 <h3><a href="src/terrain/">Omega Terreno</a></h3>
-The engine's terrain: sculpt, ramp, stamp, erode, paint, flood, grow and walk it.<br>
+The engine's terrain: generate, sculpt, ramp, stamp, erode, paint, flood, grow and walk it.<br>
 <a href="https://tugapse.github.io/omega-games/terrain/">▶ Play</a>
 </td>
 <td valign="top"></td>
@@ -52,7 +52,7 @@ The engine's terrain: sculpt, ramp, stamp, erode, paint, flood, grow and walk it
 | **Run** | its own (tile grid) | Bit's skeleton, Animator | chiptunes per world | | levels, coins, scores | 74 |
 | **Golf** | its own (ball flight) | golfer's skeleton | Web Audio | its own height grid | records | 45 |
 | **Bowling** | Rapier | bowler's skeleton | SequencerClock music | | | 53 |
-| **Terreno** | Rapier heightfields | | | `TerrainBehaviour` | the whole terrain | 15 |
+| **Terreno** | Rapier heightfields | | | `TerrainBehaviour` | the whole terrain | 26 |
 
 ## How it is laid out
 
